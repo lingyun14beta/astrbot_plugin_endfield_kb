@@ -52,7 +52,14 @@
 
 ### B. 手动导入
 
-在索引仓库的 Release 下载 `endfield_kb-latest.sqlite3.zip`：
+控制台点 **导入索引**，弹窗里二选一：
+
+- **上传文件**：选择本地 `.zip` / `.gz` / `.sqlite3`（不超过 256 MB）
+- **从链接导入**：填 GitHub Release 或 ModelScope 的直链，由服务器下载
+
+![导入索引](docs/kb-console-import.png)
+
+也可以自己下载后放进索引目录。下载地址：
 
 ```
 https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/endfield_kb-latest.sqlite3.zip
@@ -145,6 +152,7 @@ zmd 帮助
 | `/astrbot_plugin_endfield_kb/updates` | GET | 对比本地与远端版本 |
 | `/astrbot_plugin_endfield_kb/update` | POST | 下载并安装最新索引 |
 | `/astrbot_plugin_endfield_kb/upload` | POST | 接收手动上传的索引文件 |
+| `/astrbot_plugin_endfield_kb/import_url` | POST | 按链接下载并导入索引 |
 
 ## 设计取舍
 

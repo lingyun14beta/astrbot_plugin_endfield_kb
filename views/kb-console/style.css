@@ -1090,3 +1090,108 @@ body {
 .ark-detail-body::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---------------------------------------------------------------- 导入弹窗 */
+
+.ark-dialog {
+  inline-size: min(36rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--ark-rule-strong);
+  background: var(--ark-paper);
+  color: var(--ark-ink);
+}
+
+.ark-dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.ark-dialog-inner {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+.ark-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ark-dialog-title {
+  margin: 0.3rem 0 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+
+.ark-dialog-close {
+  border: 0;
+  background: transparent;
+  color: var(--ark-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+}
+
+.ark-dialog-close:hover {
+  color: var(--ark-ink);
+}
+
+.ark-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--ark-rule-strong);
+}
+
+.ark-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--ark-muted);
+  font: 500 12px/1 var(--ark-font-cjk);
+  padding: 0.65rem 0.5rem;
+  cursor: pointer;
+}
+
+.ark-seg button[aria-selected="true"] {
+  background: var(--ark-ink);
+  color: var(--ark-paper);
+}
+
+.ark-dialog-body {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ark-dialog-body input[type="file"],
+.ark-dialog-body input[type="url"] {
+  inline-size: 100%;
+  border: 1px solid var(--ark-rule-strong);
+  background: transparent;
+  color: inherit;
+  font: 13px/1.4 var(--ark-font-mono);
+  padding: 0.6rem;
+}
+
+.ark-dialog-body input[type="file"]::file-selector-button {
+  margin-inline-end: 0.6rem;
+  border: 1px solid var(--ark-rule-strong);
+  background: var(--ark-surface);
+  color: inherit;
+  font: 12px/1 var(--ark-font-cjk);
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.ark-dialog-status {
+  margin: 0;
+  min-block-size: 1.2em;
+  font-size: 12px;
+  color: var(--ark-muted);
+}
+
+.ark-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

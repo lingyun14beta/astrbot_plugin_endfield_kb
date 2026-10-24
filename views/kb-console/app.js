@@ -23,8 +23,17 @@ const els = {
   results: document.querySelector(".ark-results"),
   checkUpdate: document.getElementById("check-update"),
   importIndex: document.getElementById("import-index"),
-  indexFile: document.getElementById("index-file"),
   updateStatus: document.getElementById("update-status"),
+  dialog: document.getElementById("import-dialog"),
+  importForm: document.getElementById("import-form"),
+  tabFile: document.getElementById("tab-file"),
+  tabUrl: document.getElementById("tab-url"),
+  importFile: document.getElementById("import-file"),
+  importUrl: document.getElementById("import-url"),
+  importStatus: document.getElementById("import-status"),
+  importSubmit: document.getElementById("import-submit"),
+  importClose: document.getElementById("import-close"),
+  importCancel: document.getElementById("import-cancel"),
 };
 
 const state = {
@@ -434,31 +443,95 @@ async function handleApplyUpdate() {
   }
 }
 
-async function handleImport() {
-  const file = els.indexFile?.files?.[0];
-  if (!file) return;
-  if (!/\.(zip|gz|sqlite3)$/i.test(file.name)) {
-    updateStatus("只支持 .zip / .gz / .sqlite3");
-    els.indexFile.value = "";
-    return;
-  }
-  els.importIndex.disabled = true;
-  updateStatus(`上传 ${file.name}…`);
-  try {
-    const result = await bridge.upload("upload", file);
-    if (!result.ok) {
-      updateStatus(result.message || "导入失败");
+let importMode = "file";
+
+function setImportMode(mode) {
+  importMode = mode;
+  const isFile = mode === "file";
+  els.tabFile?.setAttribute("aria-selected", String(isFile));
+  els.tabUrl?.setAttribute("aria-selected", String(!isFile));
+  const filePanel = document.querySelector('[data-panel="file"]');
+  const urlPanel = document.querySelector('[data-panel="url"]');
+  if (filePanel) filePanel.hidden = !isFile;
+  if (urlPanel) urlPanel.hidden = isFile;
+  els.importStatus.textContent = "";
+  (isFile ? els.importFile : els.importUrl)?.focus();
+}
+
+function openImportDialog() {
+  if (!els.dialog) return;
+  els.importFile.value = "";
+  els.importUrl.value = "";
+  els.importStatus.textContent = "";
+  els.dialog.showModal();
+  setImportMode("file");
+}
+
+function closeImportDialog() {
+  els.dialog?.close();
+}
+
+function finishImport(result) {
+  state.hasIndex = true;
+  markHasIndex();
+  els.importStatus.textContent = `已导入 ${result.release || ""} · ${result.documents} 篇`;
+  loadStats();
+  window.setTimeout(closeImportDialog, 900);
+}
+
+async function submitImport(event) {
+  event.preventDefault();
+  if (els.importSubmit.disabled) return;
+
+  if (importMode === "file") {
+    const file = els.importFile.files?.[0];
+    if (!file) {
+      els.importStatus.textContent = "请选择一个文件";
       return;
     }
-    state.hasIndex = true;
-    markHasIndex();
-    updateStatus(`已导入 ${result.release || ""} · ${result.documents} 篇`);
-    loadStats();
+    if (!/\.(zip|gz|sqlite3)$/i.test(file.name)) {
+      els.importStatus.textContent = "只支持 .zip / .gz / .sqlite3";
+      return;
+    }
+    els.importSubmit.disabled = true;
+    els.importStatus.textContent = `上传 ${file.name}…`;
+    try {
+      const result = await bridge.upload("upload", file);
+      if (!result.ok) {
+        els.importStatus.textContent = result.message || "导入失败";
+        return;
+      }
+      finishImport(result);
+    } catch (error) {
+      els.importStatus.textContent = error?.message || "导入失败";
+    } finally {
+      els.importSubmit.disabled = false;
+    }
+    return;
+  }
+
+  const url = els.importUrl.value.trim();
+  if (!url) {
+    els.importStatus.textContent = "请填写下载链接";
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    els.importStatus.textContent = "只支持 http/https 链接";
+    return;
+  }
+  els.importSubmit.disabled = true;
+  els.importStatus.textContent = "下载中…";
+  try {
+    const result = await bridge.apiPost("import_url", { url });
+    if (!result.ok) {
+      els.importStatus.textContent = result.message || "导入失败";
+      return;
+    }
+    finishImport(result);
   } catch (error) {
-    updateStatus(error?.message || "导入失败");
+    els.importStatus.textContent = error?.message || "导入失败";
   } finally {
-    els.importIndex.disabled = false;
-    els.indexFile.value = "";
+    els.importSubmit.disabled = false;
   }
 }
 
@@ -489,8 +562,12 @@ function boot() {
     else handleCheckUpdate();
   });
 
-  els.importIndex?.addEventListener("click", () => els.indexFile?.click());
-  els.indexFile?.addEventListener("change", handleImport);
+  els.importIndex?.addEventListener("click", openImportDialog);
+  els.tabFile?.addEventListener("click", () => setImportMode("file"));
+  els.tabUrl?.addEventListener("click", () => setImportMode("url"));
+  els.importForm?.addEventListener("submit", submitImport);
+  els.importClose?.addEventListener("click", closeImportDialog);
+  els.importCancel?.addEventListener("click", closeImportDialog);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && document.activeElement !== els.input) {

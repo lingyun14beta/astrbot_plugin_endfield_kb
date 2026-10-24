@@ -73,7 +73,6 @@
         <div class="ark-toolbar">
           <button type="button" class="ark-tool" id="check-update">检查更新</button>
           <button type="button" class="ark-tool" id="import-index">导入索引</button>
-          <input id="index-file" type="file" accept=".zip,.gz,.sqlite3" hidden />
           <p class="ark-update-status" id="update-status" role="status" aria-live="polite"></p>
         </div>
       </section>
@@ -110,6 +109,50 @@
         <p class="ark-foot-note">标注“整理”的条目为二次整理资料，引用请以“原文”为准。</p>
       </footer>
     </div>
+
+    <dialog class="ark-dialog" id="import-dialog" aria-labelledby="import-title">
+      <form class="ark-dialog-inner" id="import-form">
+        <header class="ark-dialog-head">
+          <div>
+            <p class="ark-kicker">IMPORT / 导入</p>
+            <h2 class="ark-dialog-title" id="import-title">导入索引</h2>
+          </div>
+          <button type="button" class="ark-dialog-close" id="import-close" aria-label="关闭">×</button>
+        </header>
+
+        <div class="ark-seg" role="tablist" aria-label="导入方式">
+          <button type="button" role="tab" id="tab-file" data-mode="file" aria-selected="true">
+            上传文件
+          </button>
+          <button type="button" role="tab" id="tab-url" data-mode="url" aria-selected="false">
+            从链接导入
+          </button>
+        </div>
+
+        <div class="ark-dialog-body">
+          <div data-panel="file">
+            <input id="import-file" type="file" accept=".zip,.gz,.sqlite3" />
+            <p class="ark-hint">支持 .zip / .gz / .sqlite3，单文件不超过 256 MB。</p>
+          </div>
+          <div data-panel="url" hidden>
+            <input
+              id="import-url"
+              type="url"
+              inputmode="url"
+              placeholder="https://github.com/.../endfield_kb-latest.sqlite3.zip"
+            />
+            <p class="ark-hint">支持 GitHub Release、ModelScope 直链；.zip / .gz / .sqlite3。</p>
+          </div>
+          <p class="ark-dialog-status" id="import-status" role="status"></p>
+        </div>
+
+        <footer class="ark-dialog-foot">
+          <button type="button" class="ark-tool" id="import-cancel">取消</button>
+          <button type="submit" class="ark-tool" data-tone="primary" id="import-submit">开始导入</button>
+        </footer>
+      </form>
+    </dialog>
+
     <script type="module" src="./app.js"></script>
   </body>
 </html>

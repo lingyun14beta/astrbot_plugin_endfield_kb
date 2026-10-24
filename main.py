@@ -13,6 +13,7 @@ import time
 from dataclasses import field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic.dataclasses import dataclass
 
@@ -167,6 +168,12 @@ class EndfieldKBPlugin(Star):
             self.page_upload,
             ["POST"],
             "手动上传索引文件",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/import_url",
+            self.page_import_url,
+            ["POST"],
+            "按链接导入索引",
         )
 
     def _resolve_index_dir(self) -> Path:
@@ -527,6 +534,46 @@ class EndfieldKBPlugin(Star):
         target = self.index_dir / f".upload{suffix}"
         try:
             await upload.save(target)
+            result = await asyncio.to_thread(self.install_from_file, target)
+        except Exception as exc:  # noqa: BLE001
+            return error_response(str(exc), status_code=400)
+        finally:
+            target.unlink(missing_ok=True)
+        return json_response(result)
+
+    @staticmethod
+    def _guess_suffix(url: str, data: bytes) -> str:
+        """按 URL 后缀或文件头判断格式。"""
+        suffix = Path(urlparse(url).path).suffix.lower()
+        if suffix in {".zip", ".gz", ".sqlite3"}:
+            return suffix
+        if data[:4] == b"PK\x03\x04":
+            return ".zip"
+        if data[:2] == b"\x1f\x8b":
+            return ".gz"
+        if data[:16].startswith(b"SQLite format 3"):
+            return ".sqlite3"
+        raise ValueError("无法识别文件格式，仅支持 .zip / .gz / .sqlite3")
+
+    async def page_import_url(self):
+        """按用户提供的链接下载并导入索引。"""
+        payload = await request.json(default={})
+        url = str(payload.get("url") or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return error_response("只支持 http/https 链接", status_code=400)
+        try:
+            data = await index_fetch.fetch(url, timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            return error_response(f"下载失败：{exc}", status_code=400)
+
+        try:
+            suffix = self._guess_suffix(url, data)
+        except ValueError as exc:
+            return error_response(str(exc), status_code=400)
+
+        target = self.index_dir / f".import{suffix}"
+        target.write_bytes(data)
+        try:
             result = await asyncio.to_thread(self.install_from_file, target)
         except Exception as exc:  # noqa: BLE001
             return error_response(str(exc), status_code=400)
