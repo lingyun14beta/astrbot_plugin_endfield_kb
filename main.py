@@ -26,7 +26,14 @@ from astrbot.core.astr_agent_context import AstrAgentContext
 
 from . import index_fetch
 from .endfield_kb import KIND_LABELS, SCHEMA_VERSION, kind_counts, search
-from .index_store import decompress, default_index_dir, install, resolve, validate_db
+from .index_store import (
+    decompress,
+    default_index_dir,
+    install,
+    read_current,
+    resolve,
+    validate_db,
+)
 
 PLUGIN_NAME = "astrbot_plugin_endfield_kb"
 PLUGIN_DIR = Path(__file__).parent
@@ -129,6 +136,7 @@ class EndfieldKBPlugin(Star):
         self.db_path: Path | None = None
         self.meta: dict[str, str] = {}
         self.index_source = "missing"
+        self.local_release = ""
         self._load_index()
         context.register_web_api(
             f"/{PLUGIN_NAME}/stats",
@@ -183,6 +191,11 @@ class EndfieldKBPlugin(Star):
         self.db_path = db
         self.meta = meta
         self.index_source = source
+        self.local_release = self._version_key(meta.get("release", "")) if db else ""
+        if db:
+            current = read_current(self.index_dir) or {}
+            if current.get("release_id"):
+                self.local_release = self._version_key(str(current["release_id"]))
         if db:
             logger.info(
                 f"[终末地KB] 索引就绪：{meta.get('documents')} 篇 / "
@@ -380,6 +393,14 @@ class EndfieldKBPlugin(Star):
         match = re.search(r"(\d+\.\d+\.\d+)", value or "")
         return match.group(1) if match else (value or "")
 
+    @staticmethod
+    def _version_key(value: str) -> str:
+        """版本比较用：保留 semver 和预发布后缀，例如 1.6.3-beta。"""
+        match = re.search(r"(\d+\.\d+\.\d+)(-[0-9A-Za-z.]+)?", value or "")
+        if not match:
+            return (value or "").strip().lower()
+        return f"{match.group(1)}{(match.group(2) or '')}".lower()
+
     def _manifest_urls(self) -> list[str]:
         return index_fetch.parse_urls(
             self.config.get("manifest_urls") or DEFAULT_MANIFEST_URLS
@@ -390,11 +411,12 @@ class EndfieldKBPlugin(Star):
             self.config.get("index_urls") or DEFAULT_INDEX_URLS
         )
 
-    def install_from_file(self, path: Path) -> dict[str, Any]:
+    def install_from_file(self, path: Path, release_hint: str = "") -> dict[str, Any]:
         """校验并安装一个本地索引文件（zip/gz/sqlite3）。
 
         Args:
             path: 待安装文件。
+            release_hint: 清单里的版本标识，优先于库内 meta。
 
         Returns:
             安装结果，含文件名、篇数、版本。
@@ -412,11 +434,10 @@ class EndfieldKBPlugin(Star):
             else:
                 db = path
             meta = validate_db(db, expected_schema=SCHEMA_VERSION)
-            raw_release = str(meta.get("release") or "")
-            short = self._short_release(raw_release)
+            key = self._version_key(release_hint or str(meta.get("release") or ""))
             label = (
-                f"endfield-{short}"
-                if re.fullmatch(r"\d+\.\d+\.\d+", short or "")
+                f"endfield-{key}"
+                if re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", key or "")
                 else "manual"
             )
             installed = install(
@@ -426,7 +447,7 @@ class EndfieldKBPlugin(Star):
             return {
                 "ok": True,
                 "file": installed.name,
-                "release": short or label,
+                "release": key or label,
                 "documents": meta.get("_documents") or meta.get("documents"),
             }
         finally:
@@ -435,7 +456,7 @@ class EndfieldKBPlugin(Star):
     async def check_update(self) -> dict[str, Any]:
         """比较本地与远端版本，不下载。"""
         manifest, source = await index_fetch.fetch_manifest(self._manifest_urls())
-        current = self._short_release(self.meta.get("release", ""))
+        current = self.local_release or self._version_key(self.meta.get("release", ""))
         if not manifest:
             return {
                 "ok": True,
@@ -445,16 +466,17 @@ class EndfieldKBPlugin(Star):
                 "message": "无法获取更新清单（网络或镜像不可达）",
             }
         remote_release = str(manifest.get("release_id") or "")
+        remote_key = self._version_key(remote_release)
         return {
             "ok": True,
             "current": current,
             "remote": {
-                "release": self._short_release(remote_release),
+                "release": remote_key,
                 "documents": manifest.get("documents"),
                 "size": manifest.get("size"),
                 "built_at": manifest.get("built_at"),
             },
-            "up_to_date": bool(current) and self._short_release(remote_release) == current,
+            "up_to_date": bool(current) and remote_key == current,
             "source": source,
         }
 
@@ -472,7 +494,8 @@ class EndfieldKBPlugin(Star):
         target = self.index_dir / ".download.zip"
         target.write_bytes(data)
         try:
-            result = await asyncio.to_thread(self.install_from_file, target)
+            hint = str(manifest.get("release_id") or "") if manifest else ""
+            result = await asyncio.to_thread(self.install_from_file, target, hint)
         finally:
             target.unlink(missing_ok=True)
         return result
