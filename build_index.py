@@ -83,6 +83,7 @@ def main() -> int:
             index_dir,
             release_label(root),
             schema_version=SCHEMA_VERSION,
+            move_source=True,
         )
         print(f"已安装：{installed}")
         print(f"索引目录：{index_dir}")

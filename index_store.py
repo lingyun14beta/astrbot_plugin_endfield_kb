@@ -149,6 +149,7 @@ def install(
     index_dir: Path,
     release_id: str,
     schema_version: int | None = None,
+    move_source: bool = False,
 ) -> Path:
     """校验并安装一个索引文件，切换 current.json。
 
@@ -157,6 +158,8 @@ def install(
         index_dir: 索引目录。
         release_id: 版本标识，用于文件名。
         schema_version: 期望的 schema 版本。
+        move_source: 为 True 时直接移动源文件，省一次 35 MB 拷贝
+            （只对临时文件使用；旧库迁移要保持原文件）。
 
     Returns:
         安装后的文件路径。
@@ -169,9 +172,18 @@ def install(
     safe_release = "".join(c for c in release_id if c.isalnum() or c in ".-_") or "unknown"
     target = index_dir / f"endfield_kb-{safe_release}.sqlite3"
 
-    tmp = target.with_suffix(".sqlite3.tmp")
-    shutil.copyfile(source, tmp)
-    os.replace(tmp, target)
+    if move_source and source.resolve() != target.resolve():
+        try:
+            os.replace(source, target)
+        except OSError:
+            tmp = target.with_suffix(".sqlite3.tmp")
+            shutil.copyfile(source, tmp)
+            os.replace(tmp, target)
+            source.unlink(missing_ok=True)
+    else:
+        tmp = target.with_suffix(".sqlite3.tmp")
+        shutil.copyfile(source, tmp)
+        os.replace(tmp, target)
 
     write_current(
         index_dir,

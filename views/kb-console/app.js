@@ -53,6 +53,12 @@ function formatChars(value) {
   return formatCount(value);
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  return `${(bytes / 1048576).toFixed(1)} MiB`;
+}
+
 function compactTime(value) {
   if (!value) return "—";
   return String(value).slice(5, 16);
@@ -326,7 +332,7 @@ async function loadStats() {
     els.built.textContent = compactTime(stats.built_at);
     const refs = Number(stats.refs);
     const refNote = Number.isFinite(refs) && refs > 0 ? ` · 出处 ${formatCount(refs)} 处` : "";
-    els.release.textContent = `语料：${formatRelease(stats.release)}${refNote}`;
+    els.release.textContent = `语料：${formatRelease(stats.release)}${refNote} · 磁盘建议预留 150 MB`;
   } catch (error) {
     els.release.textContent = `统计不可用：${error?.message || "索引未就绪"}`;
   }
@@ -359,7 +365,9 @@ async function handleCheckUpdate() {
       state.pendingUpdate = info.remote;
       els.checkUpdate.textContent = `更新到 ${info.remote.release}`;
       els.checkUpdate.dataset.tone = "primary";
-      updateStatus(`发现 ${info.remote.release} · ${info.remote.documents} 篇`);
+      updateStatus(
+        `发现 ${info.remote.release} · ${info.remote.documents} 篇 · 需下载 ${formatBytes(info.remote.size)}`,
+      );
     }
   } catch (error) {
     updateStatus(error?.message || "检查失败");

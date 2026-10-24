@@ -419,7 +419,9 @@ class EndfieldKBPlugin(Star):
                 if re.fullmatch(r"\d+\.\d+\.\d+", short or "")
                 else "manual"
             )
-            installed = install(db, self.index_dir, label, SCHEMA_VERSION)
+            installed = install(
+                db, self.index_dir, label, SCHEMA_VERSION, move_source=True
+            )
             self._load_index()
             return {
                 "ok": True,
