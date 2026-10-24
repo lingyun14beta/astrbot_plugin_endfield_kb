@@ -32,6 +32,7 @@ const state = {
   hits: [],
   active: -1,
   pendingUpdate: null,
+  hasIndex: false,
 };
 
 function t(key, fallback) {
@@ -326,6 +327,7 @@ async function runSearch(rawQuery) {
 async function loadStats() {
   try {
     const stats = await bridge.apiGet("stats");
+    state.hasIndex = true;
     countUp(els.docs, Number(stats.documents), formatCount, 900);
     countUp(els.chars, Number(stats.characters), formatChars, 1100);
     els.size.textContent = `${stats.size_mb} MB`;
@@ -334,12 +336,47 @@ async function loadStats() {
     const refNote = Number.isFinite(refs) && refs > 0 ? ` · 出处 ${formatCount(refs)} 处` : "";
     els.release.textContent = `语料：${formatRelease(stats.release)}${refNote} · 磁盘建议预留 150 MB`;
   } catch (error) {
-    els.release.textContent = `统计不可用：${error?.message || "索引未就绪"}`;
+    state.hasIndex = false;
+    els.release.textContent = "尚未安装索引 · 点击上方「下载索引」";
+    markNoIndex();
   }
+}
+
+function markNoIndex() {
+  if (!els.checkUpdate) return;
+  els.checkUpdate.textContent = "下载索引";
+  els.checkUpdate.dataset.tone = "primary";
+  updateStatus("尚未安装索引，点击下载（约 12.5 MiB）");
+}
+
+function markHasIndex() {
+  if (!els.checkUpdate) return;
+  els.checkUpdate.textContent = "检查更新";
+  els.checkUpdate.removeAttribute("data-tone");
 }
 
 function updateStatus(text) {
   if (els.updateStatus) els.updateStatus.textContent = text;
+}
+
+async function handleFirstDownload() {
+  els.checkUpdate.disabled = true;
+  updateStatus("下载索引…");
+  try {
+    const result = await bridge.apiPost("update", {});
+    if (!result.ok) {
+      updateStatus(result.message || "下载失败");
+      return;
+    }
+    state.hasIndex = true;
+    markHasIndex();
+    updateStatus(`索引已就绪 · ${result.release} · ${result.documents} 篇`);
+    loadStats();
+  } catch (error) {
+    updateStatus(error?.message || "下载失败");
+  } finally {
+    els.checkUpdate.disabled = false;
+  }
 }
 
 async function handleCheckUpdate() {
@@ -386,8 +423,8 @@ async function handleApplyUpdate() {
       return;
     }
     state.pendingUpdate = null;
-    els.checkUpdate.textContent = "检查更新";
-    els.checkUpdate.removeAttribute("data-tone");
+    state.hasIndex = true;
+    markHasIndex();
     updateStatus(`已更新到 ${result.release} · ${result.documents} 篇`);
     loadStats();
   } catch (error) {
@@ -413,6 +450,8 @@ async function handleImport() {
       updateStatus(result.message || "导入失败");
       return;
     }
+    state.hasIndex = true;
+    markHasIndex();
     updateStatus(`已导入 ${result.release || ""} · ${result.documents} 篇`);
     loadStats();
   } catch (error) {
@@ -445,7 +484,8 @@ function boot() {
   });
 
   els.checkUpdate?.addEventListener("click", () => {
-    if (state.pendingUpdate) handleApplyUpdate();
+    if (!state.hasIndex) handleFirstDownload();
+    else if (state.pendingUpdate) handleApplyUpdate();
     else handleCheckUpdate();
   });
 

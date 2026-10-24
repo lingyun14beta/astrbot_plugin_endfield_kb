@@ -25,6 +25,7 @@
 1. 把插件目录放到 `AstrBot/data/plugins/astrbot_plugin_endfield_kb/`
 2. 安装依赖：`pip install jieba`（AstrBot 运行环境通常已自带）
 3. 在 WebUI 插件页启用，或重启 AstrBot
+4. 打开插件详情页的「知识库控制台」，点「下载索引」
 
 ## 磁盘占用
 
@@ -39,11 +40,19 @@
 
 ## 准备索引
 
-插件**不附带索引文件**。以下三种方式任选：
+插件**不附带索引，也不会在启动时自动下载**。首次启用只做本地扫描，找不到索引就把按钮切成「下载索引」，等你手动点。
 
-### A. 下载编译好的索引
+三种方式任选：
 
-从索引仓库的 Release 下载 `endfield_kb-latest.sqlite3.zip`：
+### A. 页面按钮（推荐）
+
+打开「知识库控制台」，点 **下载索引**（约 12.5 MiB）。下载、校验、解压、替换全自动，完成后顶部数字立即刷新。
+
+![首次安装](docs/kb-console-empty.png)
+
+### B. 手动导入
+
+在索引仓库的 Release 下载 `endfield_kb-latest.sqlite3.zip`：
 
 ```
 https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/endfield_kb-latest.sqlite3.zip
@@ -55,15 +64,13 @@ https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/downl
 https://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip
 ```
 
-解压后放进：
+不用解压，直接把 zip（或已经解压的 `.sqlite3`）放进：
 
 ```
 AstrBot/data/plugin_data/astrbot_plugin_endfield_kb/index/
 ```
 
-### B. 手动导入
-
-把 `.sqlite3` 或 `.zip` 直接丢进上面的目录，然后执行 `zmd 重载`。插件会自动解压、校验、切换。
+然后执行 `zmd 重载`。插件会自动解压、校验、切换；坏文件不会覆盖现有索引。
 
 ### C. 本地构建
 
