@@ -1,0 +1,15 @@
+{
+  "views": {
+    "kb-console": {
+      "title": "知识库控制台",
+      "description": "检索终末地本地知识库，查看命中原文与来源。",
+      "heading": "终末地知识库",
+      "searching": "检索中…",
+      "failed": "检索失败",
+      "noSelection": "未选择",
+      "detailEmpty": "从左侧选择一条结果，这里显示完整正文与来源信息。",
+      "noHit": "没有命中。",
+      "noHitNote": "换更具体的专名或原文片段再试；口语描述可以打开“关键词改写”。"
+    }
+  }
+}

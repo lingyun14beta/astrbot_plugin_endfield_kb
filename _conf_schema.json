@@ -1,0 +1,50 @@
+{
+  "index_dir": {
+    "description": "索引目录",
+    "hint": "留空则使用 AstrBot 默认的 data/plugin_data/astrbot_plugin_endfield_kb/index。Docker 或只读部署可指向挂载卷里的目录。",
+    "type": "string",
+    "default": ""
+  },
+  "manifest_urls": {
+    "description": "更新清单地址",
+    "hint": "每行一个，按顺序尝试；留空使用内置的 GitHub + ModelScope 地址。",
+    "type": "text",
+    "default": "https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/manifest.json\nhttps://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/repo?Revision=master&FilePath=manifest.json"
+  },
+  "index_urls": {
+    "description": "索引下载地址",
+    "hint": "清单不可用时直接下载这些 zip，每行一个；留空使用内置地址。",
+    "type": "text",
+    "default": "https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/endfield_kb-latest.sqlite3.zip\nhttps://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip"
+  },
+  "enable_rewrite": {
+    "description": "关键词改写",
+    "hint": "开启后，较长的描述会先交给对话模型压成检索关键词，再查本地索引。短关键词查询会自动跳过以节省调用。",
+    "type": "bool",
+    "default": true
+  },
+  "top_k": {
+    "description": "默认返回条数",
+    "hint": "模型没有指定 top_k 时使用，范围 1-10。",
+    "type": "int",
+    "default": 5
+  },
+  "max_chars": {
+    "description": "单次返回字数上限",
+    "hint": "返回给模型的正文总长度上限，越大上下文占用越高。",
+    "type": "int",
+    "default": 1800
+  },
+  "score_ratio": {
+    "description": "相关度阈值（百分比）",
+    "hint": "BM25 分数相对最佳结果的保留比例。越小越严格，只保留明显更相关的条目；越大召回越多。建议 40-60。",
+    "type": "int",
+    "default": 45
+  },
+  "rewrite_timeout": {
+    "description": "关键词改写超时（秒）",
+    "hint": "超过该时间未返回就放弃改写，直接用原始查询检索。",
+    "type": "int",
+    "default": 12
+  }
+}

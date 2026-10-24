@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN" data-ark-theme="endfield" data-ark-depth="complex">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>终末地知识库</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="ark-shell">
+      <header class="ark-topbar">
+        <div class="ark-brand">
+          <p class="ark-code">EF-KB / 01 · LOCAL ARCHIVE</p>
+          <h1 class="ark-title">终末地知识库</h1>
+          <p class="ark-sub">ENDFIELD FIELD ARCHIVE · BM25 CONSOLE</p>
+        </div>
+        <dl class="ark-stats" id="stats" aria-label="索引统计">
+          <div class="ark-stat">
+            <dt>篇目</dt>
+            <dd id="stat-docs">—</dd>
+          </div>
+          <div class="ark-stat">
+            <dt>字数</dt>
+            <dd id="stat-chars">—</dd>
+          </div>
+          <div class="ark-stat">
+            <dt>索引</dt>
+            <dd id="stat-size">—</dd>
+          </div>
+          <div class="ark-stat">
+            <dt>构建</dt>
+            <dd id="stat-built">—</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="ark-query" aria-labelledby="query-label">
+        <p class="ark-kicker" id="query-label">QUERY INPUT / 检索</p>
+        <form class="ark-form" id="search-form" role="search">
+          <label class="ark-input-wrap" for="q">
+            <span class="ark-input-index" aria-hidden="true">01</span>
+            <input
+              id="q"
+              name="q"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="粘贴原文片段，或输入人名、地名、关键词"
+              aria-describedby="query-hint"
+            />
+          </label>
+          <button class="ark-submit" id="submit" type="submit">
+            <span class="ark-submit-bar" aria-hidden="true"></span>
+            检索
+          </button>
+        </form>
+        <div class="ark-query-meta">
+          <p class="ark-hint" id="query-hint">
+            支持长原句、少量错字与 OCR 噪声；按 <kbd>/</kbd> 聚焦输入框。
+          </p>
+          <label class="ark-toggle">
+            <input id="rewrite" type="checkbox" />
+            <span>关键词改写</span>
+            <span class="ark-toggle-note">调用对话模型，较慢</span>
+          </label>
+        </div>
+        <ul class="ark-examples" id="examples" aria-label="示例查询">
+          <li><button type="button" data-q="围陋村植禾">围陋村植禾</button></li>
+          <li><button type="button" data-q="小禾庄 祈愿树">小禾庄 祈愿树</button></li>
+          <li><button type="button" data-q="协议源石是什么">协议源石是什么</button></li>
+          <li><button type="button" data-q="哪儿有自己和自己道歉的">台词片段</button></li>
+        </ul>
+        <div class="ark-toolbar">
+          <button type="button" class="ark-tool" id="check-update">检查更新</button>
+          <button type="button" class="ark-tool" id="import-index">导入索引</button>
+          <input id="index-file" type="file" accept=".zip,.gz,.sqlite3" hidden />
+          <p class="ark-update-status" id="update-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <main class="ark-stage" id="stage">
+        <section class="ark-results" aria-labelledby="results-label">
+          <div class="ark-section-head">
+            <p class="ark-kicker" id="results-label">RESULTS / 命中</p>
+            <p class="ark-readout" id="readout" aria-live="polite">等待检索</p>
+          </div>
+          <ol class="ark-list" id="list"></ol>
+          <div class="ark-placeholder" id="placeholder">
+            <p class="ark-placeholder-index" aria-hidden="true">02</p>
+            <p>粘贴一段记得的原文，或输入专名与关键词。</p>
+            <p class="ark-placeholder-note">
+              整篇文档就是一个场景，命中后直接给出完整原文。
+            </p>
+          </div>
+        </section>
+
+        <aside class="ark-detail" id="detail" aria-labelledby="detail-label">
+          <div class="ark-section-head">
+            <p class="ark-kicker" id="detail-label">DOSSIER / 原文</p>
+            <p class="ark-readout" id="detail-meta">未选择</p>
+          </div>
+          <div class="ark-detail-body" id="detail-body">
+            <p class="ark-detail-empty">从左侧选择一条结果，这里显示完整正文与来源信息。</p>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="ark-footbar">
+        <p id="release">语料：PRTS 终末地本地语料</p>
+        <p class="ark-foot-note">标注“整理”的条目为二次整理资料，引用请以“原文”为准。</p>
+      </footer>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

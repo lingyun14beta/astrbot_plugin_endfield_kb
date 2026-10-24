@@ -1,0 +1,15 @@
+{
+  "views": {
+    "kb-console": {
+      "title": "Knowledge Console",
+      "description": "Search the local Endfield knowledge base and inspect matched passages.",
+      "heading": "Endfield Archive",
+      "searching": "Searching…",
+      "failed": "Search failed",
+      "noSelection": "Nothing selected",
+      "detailEmpty": "Pick a result on the left to read the full passage and its source.",
+      "noHit": "No matches.",
+      "noHitNote": "Try a more specific name or an exact fragment; enable keyword rewriting for paraphrase."
+    }
+  }
+}
