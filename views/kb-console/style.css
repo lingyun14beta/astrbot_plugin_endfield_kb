@@ -20,6 +20,7 @@
     var(--ark-font-cjk);
   --ark-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
   --ark-gutter: clamp(1rem, 2.4vw, 2.5rem);
+  --ark-detail-w: clamp(320px, 34vw, 460px);
   --ark-ease: cubic-bezier(0.22, 0.8, 0.2, 1);
   --ark-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -56,12 +57,11 @@ body {
 }
 
 .ark-shell {
-  block-size: 100svh;
-  min-block-size: 0;
-  overflow: hidden;
+  min-block-size: 100svh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 460px);
+  grid-template-columns: minmax(0, 1fr) var(--ark-detail-w);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding-block-end: 3.25rem;
   background: var(--ark-paper);
 }
 
@@ -417,7 +417,7 @@ body {
 .ark-stage {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 460px);
+  grid-template-columns: minmax(0, 1fr) var(--ark-detail-w);
   min-block-size: 0;
   background-image:
     linear-gradient(90deg, var(--ark-grid-major) 1px, transparent 1px),
@@ -430,16 +430,13 @@ body {
   min-block-size: 0;
   display: flex;
   flex-direction: column;
-  padding: 1.25rem var(--ark-gutter) 1rem;
+  padding: 1.25rem var(--ark-gutter) 2rem;
   position: relative;
 }
 
 .ark-list-wrap {
   flex: 1 1 auto;
   min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .ark-section-head {
@@ -471,14 +468,18 @@ body {
 }
 
 .ark-pager {
-  flex: 0 0 auto;
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline-start: var(--ark-gutter);
+  inset-inline-end: calc(var(--ark-detail-w) + var(--ark-gutter));
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  margin-block-start: 0.8rem;
-  padding-block-start: 0.7rem;
+  padding-block: 0.7rem;
   border-block-start: 1px solid var(--ark-rule-strong);
+  background: var(--ark-paper);
 }
 
 .ark-pager[hidden] {
@@ -832,21 +833,16 @@ body {
 
 @media (max-width: 860px), (orientation: portrait) {
   .ark-shell {
-    block-size: auto;
-    overflow: visible;
     grid-template-columns: minmax(0, 1fr);
   }
 
   .ark-list-wrap {
     overflow: visible;
-    padding-block-end: 3.5rem;
+    padding-block-end: 1rem;
   }
 
   .ark-pager {
-    position: sticky;
-    inset-block-end: 0;
-    z-index: 3;
-    background: var(--ark-paper);
+    inset-inline-end: var(--ark-gutter);
     box-shadow: 0 -10px 18px -14px color-mix(in srgb, var(--ark-ink) 45%, transparent);
   }
 
