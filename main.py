@@ -138,7 +138,7 @@ class EndfieldSearchTool(FunctionTool[AstrAgentContext]):
     "astrbot_plugin_endfield_kb",
     "local",
     "终末地中文知识库：本地 BM25 检索剧情、档案与设定，零外部依赖",
-    "v1.1.0",
+    "v1.3.1",
     "",
 )
 class EndfieldKBPlugin(Star):
@@ -147,6 +147,7 @@ class EndfieldKBPlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
         self.config = config or {}
+        self._normalize_sources()
         self.index_dir = self._resolve_index_dir()
         self.db_path: Path | None = None
         self.meta: dict[str, str] = {}
@@ -189,6 +190,46 @@ class EndfieldKBPlugin(Star):
             ["POST"],
             "按链接导入索引",
         )
+
+    @staticmethod
+    def _repair_url_value(value: object) -> list[str] | None:
+        """把字符串或被拆成单字符的列表还原成地址列表。
+
+        Args:
+            value: 配置里读到的原值。
+
+        Returns:
+            修好后的地址列表；本来就正常时返回 None，表示无需改动。
+        """
+        if isinstance(value, str):
+            return index_fetch.parse_urls(value)
+        if (
+            isinstance(value, list)
+            and len(value) > 8
+            and all(isinstance(item, str) and len(item) == 1 for item in value)
+            and "://" in "".join(str(item) for item in value)
+        ):
+            return index_fetch.parse_urls("".join(str(item) for item in value))
+        return None
+
+    def _normalize_sources(self) -> None:
+        """把旧版的字符串地址迁移成列表并落盘。
+
+        旧 schema 用 text 存多行地址；改成 list 后，残留的字符串会被列表
+        编辑器按字符拆开，所以在加载时统一修一次。
+        """
+        changed = False
+        for key in ("manifest_urls", "index_urls"):
+            repaired = self._repair_url_value(self.config.get(key))
+            if repaired is not None:
+                self.config[key] = repaired
+                changed = True
+        if not changed:
+            return
+        try:
+            self.config.save_config()
+        except Exception as exc:  # noqa: BLE001 - 存不下去也不影响本次运行
+            logger.debug(f"[终末地KB] 地址配置迁移未落盘：{exc}")
 
     def _resolve_index_dir(self) -> Path:
         """确定索引目录：配置优先，其次 AstrBot 插件数据目录。"""
