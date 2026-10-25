@@ -73,8 +73,8 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 2rem;
-  padding: clamp(0.8rem, 3vh, 2.75rem) var(--ark-gutter)
-    clamp(0.7rem, 1.6vh, 1.25rem);
+  padding: clamp(1rem, 2.2vw, 2.4rem) var(--ark-gutter)
+    clamp(0.8rem, 1.2vw, 1.2rem);
   border-block-end: 1px solid var(--ark-rule-strong);
   position: relative;
 }
@@ -109,7 +109,7 @@ body {
 .ark-title {
   margin: 0.35rem 0 0;
   font-family: var(--ark-font-cjk);
-  font-size: clamp(1.7rem, min(5.2vh, 8vw), 3.4rem);
+  font-size: clamp(2rem, 4.4vw, 3.4rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 0.94;
@@ -154,8 +154,8 @@ body {
 
 .ark-query {
   grid-column: 1 / -1;
-  padding: clamp(0.8rem, 2.4vh, 1.25rem) var(--ark-gutter)
-    clamp(0.7rem, 2vh, 1.1rem);
+  padding: clamp(1rem, 1.8vw, 1.3rem) var(--ark-gutter)
+    clamp(0.85rem, 1.4vw, 1.1rem);
   border-block-end: 1px solid var(--ark-rule);
 }
 
@@ -345,7 +345,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin: clamp(0.45rem, 1.8vh, 0.85rem) 0 0;
+  margin: clamp(0.6rem, 1vw, 0.85rem) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -371,8 +371,8 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.45rem;
-  margin-block-start: clamp(0.45rem, 1.8vh, 0.9rem);
-  padding-block-start: clamp(0.4rem, 1.4vh, 0.7rem);
+  margin-block-start: clamp(0.55rem, 0.9vw, 0.9rem);
+  padding-block-start: clamp(0.45rem, 0.7vw, 0.7rem);
   border-block-start: 1px solid var(--ark-rule);
 }
 
@@ -794,7 +794,7 @@ body {
 /* ---------------------------------------------------------------- 竖屏 */
 
 /* 窗口不高时进一步收掉非必要行，把高度让给结果列表 */
-@media (max-height: 900px) {
+@media (max-height: 760px) {
   .ark-sub {
     display: none;
   }
@@ -819,7 +819,7 @@ body {
   }
 }
 
-@media (max-height: 780px) {
+@media (max-height: 650px) {
   .ark-stats {
     display: none;
   }
