@@ -73,7 +73,8 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 2rem;
-  padding: clamp(1.5rem, 3vw, 2.75rem) var(--ark-gutter) 1.25rem;
+  padding: clamp(0.8rem, 3vh, 2.75rem) var(--ark-gutter)
+    clamp(0.7rem, 1.6vh, 1.25rem);
   border-block-end: 1px solid var(--ark-rule-strong);
   position: relative;
 }
@@ -108,7 +109,7 @@ body {
 .ark-title {
   margin: 0.35rem 0 0;
   font-family: var(--ark-font-cjk);
-  font-size: clamp(2rem, 4.6vw, 3.4rem);
+  font-size: clamp(1.7rem, min(5.2vh, 8vw), 3.4rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 0.94;
@@ -153,7 +154,8 @@ body {
 
 .ark-query {
   grid-column: 1 / -1;
-  padding: 1.25rem var(--ark-gutter) 1.1rem;
+  padding: clamp(0.8rem, 2.4vh, 1.25rem) var(--ark-gutter)
+    clamp(0.7rem, 2vh, 1.1rem);
   border-block-end: 1px solid var(--ark-rule);
 }
 
@@ -343,7 +345,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin: 0.85rem 0 0;
+  margin: clamp(0.45rem, 1.8vh, 0.85rem) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -369,8 +371,8 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.45rem;
-  margin-block-start: 0.9rem;
-  padding-block-start: 0.7rem;
+  margin-block-start: clamp(0.45rem, 1.8vh, 0.9rem);
+  padding-block-start: clamp(0.4rem, 1.4vh, 0.7rem);
   border-block-start: 1px solid var(--ark-rule);
 }
 
@@ -791,6 +793,43 @@ body {
 
 /* ---------------------------------------------------------------- 竖屏 */
 
+/* 窗口不高时进一步收掉非必要行，把高度让给结果列表 */
+@media (max-height: 900px) {
+  .ark-sub {
+    display: none;
+  }
+
+  .ark-hint {
+    display: none;
+  }
+
+  .ark-examples {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-block-end: 2px;
+    scrollbar-width: none;
+  }
+
+  .ark-examples::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ark-examples button {
+    white-space: nowrap;
+  }
+}
+
+@media (max-height: 780px) {
+  .ark-stats {
+    display: none;
+  }
+
+  .ark-submit {
+    min-block-size: 42px;
+    padding: 0.4rem 1.4rem;
+  }
+}
+
 @media (max-width: 860px), (orientation: portrait) {
   .ark-shell {
     block-size: auto;
@@ -800,6 +839,7 @@ body {
 
   .ark-list-wrap {
     overflow: visible;
+    padding-block-end: 3.5rem;
   }
 
   .ark-pager {
@@ -849,6 +889,50 @@ body {
 
   .ark-input-wrap {
     border-block-end: 1px solid var(--ark-rule);
+  }
+
+  .ark-examples button {
+    min-block-size: 38px;
+  }
+
+  .ark-pager {
+    padding-block-end: max(0.7rem, env(safe-area-inset-bottom));
+  }
+
+  .ark-pager-btn {
+    min-block-size: 40px;
+    padding: 0.6rem 1.1rem;
+    font-size: 13px;
+  }
+
+  .ark-detail {
+    scroll-margin-block-start: 0.5rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .ark-topbar {
+    padding-block: 0.8rem 0.7rem;
+  }
+
+  .ark-title {
+    font-size: clamp(1.55rem, 7.5vw, 2rem);
+  }
+
+  .ark-stats {
+    display: none;
+  }
+
+  .ark-query {
+    padding-block: 0.9rem;
+  }
+
+  .ark-field select {
+    font-size: 12px;
+  }
+
+  .ark-footbar {
+    display: none;
   }
 }
 

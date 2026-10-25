@@ -2,6 +2,7 @@
 
 const bridge = window.AstrBotPluginView ?? window.AstrBotPluginPage;
 const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const mobileLayout = window.matchMedia("(max-width: 860px), (orientation: portrait)");
 
 const els = {
   form: document.getElementById("search-form"),
@@ -15,6 +16,7 @@ const els = {
   readout: document.getElementById("readout"),
   detailBody: document.getElementById("detail-body"),
   detailMeta: document.getElementById("detail-meta"),
+  detail: document.getElementById("detail"),
   docs: document.getElementById("stat-docs"),
   chars: document.getElementById("stat-chars"),
   size: document.getElementById("stat-size"),
@@ -251,7 +253,7 @@ function renderPage() {
 
     body.append(head, snippet);
     button.append(number, body);
-    button.addEventListener("click", () => selectHit(index));
+    button.addEventListener("click", () => selectHit(index, true));
     item.appendChild(button);
     els.list.appendChild(item);
   });
@@ -282,7 +284,7 @@ function goToPage(delta) {
   });
 }
 
-function selectHit(index) {
+function selectHit(index, scrollDetail = false) {
   const hit = state.hits[index];
   if (!hit) return;
   state.active = index;
@@ -344,6 +346,12 @@ function selectHit(index) {
   }
   els.detailBody.scrollTop = 0;
   replayDetail();
+  if (scrollDetail && mobileLayout.matches) {
+    els.detail?.scrollIntoView({
+      behavior: prefersReduced ? "auto" : "smooth",
+      block: "start",
+    });
+  }
 }
 
 async function runSearch(rawQuery) {
