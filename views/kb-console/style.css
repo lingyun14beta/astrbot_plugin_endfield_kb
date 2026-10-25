@@ -876,15 +876,32 @@ body {
   }
 
   .ark-form {
-    flex-direction: column;
-  }
-
-  .ark-submit {
-    justify-content: center;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.5rem;
+    border-block: 0;
+    margin-block-start: 0.75rem;
   }
 
   .ark-input-wrap {
-    border-block-end: 1px solid var(--ark-rule);
+    border: 1px solid var(--ark-rule-strong);
+    padding-inline: 0.75rem;
+    background: var(--ark-paper);
+  }
+
+  #q {
+    padding-block: 0.7rem;
+  }
+
+  .ark-form::after {
+    display: none;
+  }
+
+  .ark-submit {
+    flex: 0 0 auto;
+    justify-content: center;
+    min-block-size: auto;
+    padding-inline: 1.1rem;
   }
 
   .ark-examples button {
@@ -925,6 +942,24 @@ body {
 
   .ark-field select {
     font-size: 12px;
+  }
+
+  .ark-hint {
+    display: none;
+  }
+
+  .ark-examples {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ark-examples::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ark-examples button {
+    white-space: nowrap;
   }
 
   .ark-footbar {
