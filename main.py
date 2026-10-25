@@ -19,7 +19,7 @@ from pydantic.dataclasses import dataclass
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star
 from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
@@ -134,13 +134,6 @@ class EndfieldSearchTool(FunctionTool[AstrAgentContext]):
         return await self.plugin.search_text(query, umo, top_k)
 
 
-@register(
-    "astrbot_plugin_endfield_kb",
-    "local",
-    "终末地中文知识库：本地 BM25 检索剧情、档案与设定，零外部依赖",
-    "v1.3.1",
-    "",
-)
 class EndfieldKBPlugin(Star):
     """终末地本地知识库插件。"""
 
