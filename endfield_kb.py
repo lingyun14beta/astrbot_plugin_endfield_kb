@@ -280,6 +280,7 @@ def build_index(
     corpus_root: Path,
     db_path: Path,
     log=print,
+    index_version: str = "",
 ) -> dict[str, object]:
     """从 PRTS 语料发布目录重建中文索引。
 
@@ -287,6 +288,8 @@ def build_index(
         corpus_root: 发布包目录，其下应有 endfield_official_game 等分片包。
         db_path: 输出的 SQLite 文件路径。
         log: 进度输出函数。
+        index_version: 本仓库自己的索引修订号（如 ``1.6.3-r1``），写入 meta
+            供插件比较版本；留空表示不写，插件回退到语料的 release 名。
 
     Returns:
         含文档数、字符数、耗时、体积的统计字典。
@@ -381,6 +384,11 @@ def build_index(
     )
     con.execute("INSERT INTO meta (k, v) VALUES ('data_version', ?)", (data_version,))
     con.execute("INSERT INTO meta (k, v) VALUES ('release', ?)", (corpus_root.name,))
+    if index_version.strip():
+        con.execute(
+            "INSERT INTO meta (k, v) VALUES ('index_version', ?)",
+            (index_version.strip(),),
+        )
     con.execute("INSERT INTO meta (k, v) VALUES ('refs', ?)", (str(ref_total),))
     con.execute("INSERT INTO meta (k, v) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
     con.commit()

@@ -87,6 +87,9 @@ AstrBot/data/plugin_data/astrbot_plugin_endfield_kb/index/
 python build_index.py                    # 自动找最新语料，构建并安装
 python build_index.py --corpus <目录>     # 指定语料目录
 python build_index.py --out <文件>        # 只构建，用于打包发布
+
+# 写入本仓库自己的索引修订号（推荐），插件据此判断更新
+python build_index.py --index-version 1.6.3-r1
 ```
 
 约 30–60 秒，产出 35 MB 左右的 SQLite 文件。
@@ -96,11 +99,23 @@ python build_index.py --out <文件>        # 只构建，用于打包发布
 ```
 data/plugin_data/astrbot_plugin_endfield_kb/index/
 ├─ current.json                          # 指针：当前文件与版本
-├─ endfield_kb-endfield-1.6.3.sqlite3    # 当前索引
+├─ endfield_kb-endfield-1.6.3-r1.sqlite3 # 当前索引
 └─ endfield_kb-*.sqlite3.zip             # 待导入的压缩包（可选）
 ```
 
 发现顺序：`current.json` → 目录内最新的库 → `.zip`/`.gz` 自动解压 → 旧路径迁移。
+
+### 版本号
+
+索引版本写成「语料版本 + 修订号」：
+
+| 例子 | 含义 |
+|---|---|
+| `1.6.3-r1` | 语料还是 1.6.3，这是索引的第 1 次编译发布 |
+| `1.6.3-r2` | 同一份语料，改了清洗、分词或结构，重新发布 |
+| `1.7.0-r1` | 语料升到 1.7.0 后的第一次编译 |
+
+修订号只表示「我们这边的优化」，不代表游戏或语料出了新版本。索引里写入 `meta.index_version`，控制台显示的、更新比较用的都是它；没有这个字段的旧索引回退到语料 release 名。
 
 ## 使用
 

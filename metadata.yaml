@@ -1,11 +1,11 @@
-﻿name: astrbot_plugin_endfield_kb
+name: astrbot_plugin_endfield_kb
 display_name: 终末地中文知识库
 short_desc: 本地 BM25 检索《明日方舟：终末地》剧情原文、档案与设定，无需嵌入模型
 desc: >-
   把终末地中文语料（官方剧情原文 12,585 篇 + 整理资料 3,621 篇）编译成本地 FTS5 索引，
   注册为 LLM 工具 endfield_kb_search。模型在需要时主动检索，查询前可选地用对话模型
   把自然语言压成关键词。零外部服务、零嵌入成本，贴原文、错字、OCR 噪声都能命中。
-version: v1.1.0
+version: v1.1.1
 author: local
 repo: ""
 

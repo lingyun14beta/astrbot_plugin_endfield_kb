@@ -198,7 +198,11 @@ class EndfieldKBPlugin(Star):
         self.db_path = db
         self.meta = meta
         self.index_source = source
-        self.local_release = self._version_key(meta.get("release", "")) if db else ""
+        self.local_release = (
+            self._version_key(meta.get("index_version") or meta.get("release", ""))
+            if db
+            else ""
+        )
         if db:
             current = read_current(self.index_dir) or {}
             if current.get("release_id"):
@@ -336,6 +340,7 @@ class EndfieldKBPlugin(Star):
                 "size_mb": round(self.db_path.stat().st_size / 1e6, 1),
                 "built_at": self.meta.get("built_at", ""),
                 "release": self.meta.get("release", ""),
+                "index_version": self.meta.get("index_version", ""),
                 "kinds": [
                     {
                         "kind": kind,
@@ -395,14 +400,8 @@ class EndfieldKBPlugin(Star):
     # ------------------------------------------------------------------ 更新
 
     @staticmethod
-    def _short_release(value: str) -> str:
-        """把长 release 名归一成版本号，例如 1.6.3。"""
-        match = re.search(r"(\d+\.\d+\.\d+)", value or "")
-        return match.group(1) if match else (value or "")
-
-    @staticmethod
     def _version_key(value: str) -> str:
-        """版本比较用：保留 semver 和预发布后缀，例如 1.6.3-beta。"""
+        """版本比较用：保留 semver 后缀，例如 1.6.3-beta、1.6.3-r1。"""
         match = re.search(r"(\d+\.\d+\.\d+)(-[0-9A-Za-z.]+)?", value or "")
         if not match:
             return (value or "").strip().lower()
@@ -441,7 +440,10 @@ class EndfieldKBPlugin(Star):
             else:
                 db = path
             meta = validate_db(db, expected_schema=SCHEMA_VERSION)
-            key = self._version_key(release_hint or str(meta.get("release") or ""))
+            hint = release_hint or str(
+                meta.get("index_version") or meta.get("release") or ""
+            )
+            key = self._version_key(hint)
             label = (
                 f"endfield-{key}"
                 if re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", key or "")
@@ -463,7 +465,9 @@ class EndfieldKBPlugin(Star):
     async def check_update(self) -> dict[str, Any]:
         """比较本地与远端版本，不下载。"""
         manifest, source = await index_fetch.fetch_manifest(self._manifest_urls())
-        current = self.local_release or self._version_key(self.meta.get("release", ""))
+        current = self.local_release or self._version_key(
+            self.meta.get("index_version") or self.meta.get("release", "")
+        )
         if not manifest:
             return {
                 "ok": True,
@@ -595,16 +599,20 @@ class EndfieldKBPlugin(Star):
         match = re.search(r"endfield-(\d+\.\d+\.\d+)", release)
         if match:
             release = f"终末地 {match.group(1)}"
-        return (
-            "终末地中文知识库\n"
-            f"文档：{self.meta.get('documents')} 篇\n"
-            f"字数：{self.meta.get('characters')}\n"
-            f"出处：{self.meta.get('refs') or 0} 处\n"
-            f"索引体积：{size:.1f} MB\n"
-            f"构建时间：{self.meta.get('built_at')}\n"
-            f"语料版本：{release}\n"
-            f"文件：{self.db_path.name}（{self.index_source}）"
-        )
+        index_version = self.meta.get("index_version") or ""
+        lines = [
+            "终末地中文知识库",
+            f"文档：{self.meta.get('documents')} 篇",
+            f"字数：{self.meta.get('characters')}",
+            f"出处：{self.meta.get('refs') or 0} 处",
+            f"索引体积：{size:.1f} MB",
+            f"构建时间：{self.meta.get('built_at')}",
+            f"语料版本：{release}",
+        ]
+        if index_version:
+            lines.append(f"索引版本：{index_version}")
+        lines.append(f"文件：{self.db_path.name}（{self.index_source}）")
+        return "\n".join(lines)
 
     @filter.command("zmd")
     async def zmd(self, event: AstrMessageEvent):

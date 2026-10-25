@@ -343,7 +343,8 @@ async function loadStats() {
     els.built.textContent = compactTime(stats.built_at);
     const refs = Number(stats.refs);
     const refNote = Number.isFinite(refs) && refs > 0 ? ` · 出处 ${formatCount(refs)} 处` : "";
-    els.release.textContent = `语料：${formatRelease(stats.release)}${refNote} · 磁盘建议预留 150 MB`;
+    const indexNote = stats.index_version ? ` · 索引 ${stats.index_version}` : "";
+    els.release.textContent = `语料：${formatRelease(stats.release)}${indexNote}${refNote} · 磁盘建议预留 150 MB`;
   } catch (error) {
     state.hasIndex = false;
     els.release.textContent = "尚未安装索引 · 点击上方「下载索引」";

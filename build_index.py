@@ -56,6 +56,11 @@ def main() -> int:
     parser.add_argument(
         "--out", type=Path, help="只构建到指定文件，不安装（用于打包发布）"
     )
+    parser.add_argument(
+        "--index-version",
+        default="",
+        help="索引修订号，如 1.6.3-r1，写入 meta.index_version 供插件比较",
+    )
     args = parser.parse_args()
 
     root = args.corpus or latest_release(DEFAULT_CORPUS)
@@ -66,7 +71,7 @@ def main() -> int:
     build_target.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        stats = build_index(root, build_target)
+        stats = build_index(root, build_target, index_version=args.index_version)
         print(
             "完成：{documents} 篇，{characters} 字，{seconds} 秒，{size_mb} MB".format(
                 **stats
@@ -78,10 +83,15 @@ def main() -> int:
             return 0
 
         index_dir = default_index_dir(PLUGIN_DIR)
+        label = (
+            f"endfield-{args.index_version.strip()}"
+            if args.index_version.strip()
+            else release_label(root)
+        )
         installed = install(
             build_target,
             index_dir,
-            release_label(root),
+            label,
             schema_version=SCHEMA_VERSION,
             move_source=True,
         )
