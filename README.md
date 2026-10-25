@@ -157,9 +157,11 @@ zmd 帮助
 | 项 | 默认 | 说明 |
 |---|---|---|
 | `index_dir` | 空 | 索引目录；留空用 `data/plugin_data/astrbot_plugin_endfield_kb/index`，Docker 可指向挂载卷 |
-| `manifest_urls` | GitHub + ModelScope | 更新清单地址，每行一个，按顺序尝试 |
-| `index_urls` | GitHub + ModelScope | 清单不可用时直接下载的 zip 地址 |
+| `custom_sources` | false | 自定义下载源开关；关闭时只用内置地址，开启后才显示下面两个列表 |
+| `manifest_urls` | 空 | 更新清单地址列表，按顺序尝试；留空回退内置地址 |
+| `index_urls` | 空 | 清单不可用时直接下载的 zip 地址列表；留空回退内置地址 |
 | `enable_rewrite` | true | 长描述先用对话模型压成关键词；短关键词查询自动跳过 |
+| `rewrite_provider` | 空 | 关键词改写专用的模型，留空用当前会话的模型 |
 | `top_k` | 5 | 默认返回条数 |
 | `max_chars` | 1800 | 单次返回正文上限 |
 | `score_ratio` | 45 | BM25 相对阈值，越小越严格 |

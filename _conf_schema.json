@@ -5,23 +5,45 @@
     "type": "string",
     "default": ""
   },
+  "custom_sources": {
+    "description": "自定义下载源",
+    "hint": "关闭时只用内置的 GitHub + ModelScope 地址；开启后下面两个列表才会出现，并优先使用你填的地址（留空仍回退到内置地址）。",
+    "type": "bool",
+    "default": false
+  },
   "manifest_urls": {
     "description": "更新清单地址",
-    "hint": "每行一个，按顺序尝试；留空使用内置的 GitHub + ModelScope 地址。",
-    "type": "text",
-    "default": "https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/manifest.json\nhttps://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/repo?Revision=master&FilePath=manifest.json"
+    "hint": "每行一个，按顺序尝试；全部失败时再直接下载索引。",
+    "type": "list",
+    "condition": {
+      "custom_sources": true
+    },
+    "default": []
   },
   "index_urls": {
     "description": "索引下载地址",
-    "hint": "清单不可用时直接下载这些 zip，每行一个；留空使用内置地址。",
-    "type": "text",
-    "default": "https://github.com/lingyun14beta/astrbot-endfield-kb-index/releases/latest/download/endfield_kb-latest.sqlite3.zip\nhttps://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip"
+    "hint": "清单不可用时直接下载这些 zip，每行一个。",
+    "type": "list",
+    "condition": {
+      "custom_sources": true
+    },
+    "default": []
   },
   "enable_rewrite": {
     "description": "关键词改写",
     "hint": "开启后，较长的描述会先交给对话模型压成检索关键词，再查本地索引。短关键词查询会自动跳过以节省调用。",
     "type": "bool",
     "default": true
+  },
+  "rewrite_provider": {
+    "description": "关键词改写模型",
+    "hint": "选择用来压缩描述的模型；留空则用当前会话正在使用的模型。",
+    "type": "string",
+    "_special": "select_provider",
+    "condition": {
+      "enable_rewrite": true
+    },
+    "default": ""
   },
   "top_k": {
     "description": "默认返回条数",

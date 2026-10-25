@@ -255,11 +255,16 @@ class EndfieldKBPlugin(Star):
             return ""
         if len(query) < 24 and not SENTENCE_RE.search(query):
             return ""
-        try:
-            provider = await self.context.get_using_provider_async(umo)
-        except Exception as exc:  # noqa: BLE001 - 取模型失败不应阻断检索
-            logger.debug(f"[终末地KB] 获取模型失败：{exc}")
-            return ""
+        provider = None
+        provider_id = str(self.config.get("rewrite_provider") or "").strip()
+        if provider_id:
+            provider = self.context.get_provider_by_id(provider_id)
+        if provider is None:
+            try:
+                provider = await self.context.get_using_provider_async(umo)
+            except Exception as exc:  # noqa: BLE001 - 取模型失败不应阻断检索
+                logger.debug(f"[终末地KB] 获取模型失败：{exc}")
+                return ""
         if provider is None:
             return ""
         try:
@@ -424,14 +429,27 @@ class EndfieldKBPlugin(Star):
             return (value or "").strip().lower()
         return f"{match.group(1)}{(match.group(2) or '')}".lower()
 
+    def _custom_urls(self, key: str) -> list[str]:
+        """自定义源开关打开时返回用户填的地址，否则返回空表。
+
+        Args:
+            key: 配置项名（manifest_urls 或 index_urls）。
+
+        Returns:
+            地址列表；开关关闭或列表为空时为空表，调用方据此回退内置地址。
+        """
+        if not self.config.get("custom_sources"):
+            return []
+        return index_fetch.parse_urls(self.config.get(key))
+
     def _manifest_urls(self) -> list[str]:
-        return index_fetch.parse_urls(
-            self.config.get("manifest_urls") or DEFAULT_MANIFEST_URLS
+        return self._custom_urls("manifest_urls") or index_fetch.parse_urls(
+            DEFAULT_MANIFEST_URLS
         )
 
     def _zip_urls(self) -> list[str]:
-        return index_fetch.parse_urls(
-            self.config.get("index_urls") or DEFAULT_INDEX_URLS
+        return self._custom_urls("index_urls") or index_fetch.parse_urls(
+            DEFAULT_INDEX_URLS
         )
 
     def install_from_file(self, path: Path, release_hint: str = "") -> dict[str, Any]:
