@@ -56,7 +56,9 @@ body {
 }
 
 .ark-shell {
-  min-block-size: 100svh;
+  block-size: 100svh;
+  min-block-size: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 460px);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -423,8 +425,19 @@ body {
 
 .ark-results {
   min-inline-size: 0;
-  padding: 1.25rem var(--ark-gutter) 2rem;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem var(--ark-gutter) 1rem;
   position: relative;
+}
+
+.ark-list-wrap {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .ark-section-head {
@@ -452,22 +465,18 @@ body {
 }
 
 .ark-results:has(.ark-pager:not([hidden])) .ark-list {
-  padding-block-end: 3rem;
+  padding-block-end: 1.25rem;
 }
 
 .ark-pager {
-  position: sticky;
-  inset-block-end: 0;
-  z-index: 3;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  margin-block-start: 1rem;
-  padding-block: 0.7rem;
+  margin-block-start: 0.8rem;
+  padding-block-start: 0.7rem;
   border-block-start: 1px solid var(--ark-rule-strong);
-  background: var(--ark-paper);
-  box-shadow: 0 -10px 18px -14px color-mix(in srgb, var(--ark-ink) 45%, transparent);
 }
 
 .ark-pager[hidden] {
@@ -784,7 +793,21 @@ body {
 
 @media (max-width: 860px), (orientation: portrait) {
   .ark-shell {
+    block-size: auto;
+    overflow: visible;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ark-list-wrap {
+    overflow: visible;
+  }
+
+  .ark-pager {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: 3;
+    background: var(--ark-paper);
+    box-shadow: 0 -10px 18px -14px color-mix(in srgb, var(--ark-ink) 45%, transparent);
   }
 
   .ark-topbar {

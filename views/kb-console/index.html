@@ -104,19 +104,21 @@
             <p class="ark-kicker" id="results-label">RESULTS / 命中</p>
             <p class="ark-readout" id="readout" aria-live="polite">等待检索</p>
           </div>
-          <ol class="ark-list" id="list"></ol>
+          <div class="ark-list-wrap">
+            <ol class="ark-list" id="list"></ol>
+            <div class="ark-placeholder" id="placeholder">
+              <p class="ark-placeholder-index" aria-hidden="true">02</p>
+              <p>粘贴一段记得的原文，或输入专名与关键词。</p>
+              <p class="ark-placeholder-note">
+                整篇文档就是一个场景，命中后直接给出完整原文。
+              </p>
+            </div>
+          </div>
           <nav class="ark-pager" id="pager" aria-label="结果分页" hidden>
             <button type="button" class="ark-pager-btn" id="pager-prev">上一页</button>
             <p class="ark-pager-status" id="pager-status" aria-live="polite">1 / 1</p>
             <button type="button" class="ark-pager-btn" id="pager-next">下一页</button>
           </nav>
-          <div class="ark-placeholder" id="placeholder">
-            <p class="ark-placeholder-index" aria-hidden="true">02</p>
-            <p>粘贴一段记得的原文，或输入专名与关键词。</p>
-            <p class="ark-placeholder-note">
-              整篇文档就是一个场景，命中后直接给出完整原文。
-            </p>
-          </div>
         </section>
 
         <aside class="ark-detail" id="detail" aria-labelledby="detail-label">
