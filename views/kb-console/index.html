@@ -67,12 +67,11 @@
               </select>
             </label>
             <label class="ark-field">
-              <span class="ark-field-label">条数</span>
+              <span class="ark-field-label">上限</span>
               <select id="limit" name="limit">
-                <option value="5">5</option>
-                <option value="8" selected>8</option>
-                <option value="15">15</option>
-                <option value="30">30</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="30" selected>30</option>
                 <option value="50">50</option>
               </select>
             </label>
@@ -106,6 +105,11 @@
             <p class="ark-readout" id="readout" aria-live="polite">等待检索</p>
           </div>
           <ol class="ark-list" id="list"></ol>
+          <nav class="ark-pager" id="pager" aria-label="结果分页" hidden>
+            <button type="button" class="ark-pager-btn" id="pager-prev">上一页</button>
+            <p class="ark-pager-status" id="pager-status" aria-live="polite">1 / 1</p>
+            <button type="button" class="ark-pager-btn" id="pager-next">下一页</button>
+          </nav>
           <div class="ark-placeholder" id="placeholder">
             <p class="ark-placeholder-index" aria-hidden="true">02</p>
             <p>粘贴一段记得的原文，或输入专名与关键词。</p>

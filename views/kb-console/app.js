@@ -36,12 +36,19 @@ const els = {
   importSubmit: document.getElementById("import-submit"),
   importClose: document.getElementById("import-close"),
   importCancel: document.getElementById("import-cancel"),
+  pager: document.getElementById("pager"),
+  pagerPrev: document.getElementById("pager-prev"),
+  pagerNext: document.getElementById("pager-next"),
+  pagerStatus: document.getElementById("pager-status"),
 };
+
+const PAGE_SIZE = 10;
 
 const state = {
   busy: false,
   hits: [],
   active: -1,
+  page: 0,
   pendingUpdate: null,
   hasIndex: false,
 };
@@ -172,6 +179,7 @@ function renderHits(payload) {
   pulseResults();
   state.hits = payload.hits ?? [];
   state.active = -1;
+  state.page = 0;
   els.detailMeta.textContent = t("views.kb-console.noSelection", "未选择");
   els.detailBody.replaceChildren();
   const empty = document.createElement("p");
@@ -183,6 +191,7 @@ function renderHits(payload) {
   els.detailBody.appendChild(empty);
 
   if (!state.hits.length) {
+    updatePager();
     renderEmpty(
       t("views.kb-console.noHit", "没有命中。"),
       t(
@@ -193,10 +202,18 @@ function renderHits(payload) {
     return;
   }
 
-  state.hits.forEach((hit, index) => {
+  renderPage();
+}
+
+function renderPage() {
+  clearList();
+  const start = state.page * PAGE_SIZE;
+  state.hits.slice(start, start + PAGE_SIZE).forEach((hit, offset) => {
+    const index = start + offset;
     const item = document.createElement("li");
     item.className = "ark-item";
-    item.style.setProperty("--i", String(index));
+    item.dataset.index = String(index);
+    item.style.setProperty("--i", String(offset));
 
     const button = document.createElement("button");
     button.type = "button";
@@ -238,6 +255,31 @@ function renderHits(payload) {
     item.appendChild(button);
     els.list.appendChild(item);
   });
+  updatePager();
+}
+
+function updatePager() {
+  const total = Math.max(1, Math.ceil(state.hits.length / PAGE_SIZE));
+  const paged = state.hits.length > PAGE_SIZE;
+  els.pager.hidden = !paged;
+  if (!paged) return;
+  els.pagerStatus.textContent = `${state.page + 1} / ${total}`;
+  els.pagerPrev.disabled = state.page === 0;
+  els.pagerNext.disabled = state.page >= total - 1;
+}
+
+function goToPage(delta) {
+  const total = Math.ceil(state.hits.length / PAGE_SIZE);
+  if (total < 2) return;
+  const target = Math.min(Math.max(state.page + delta, 0), total - 1);
+  if (target === state.page) return;
+  state.page = target;
+  renderPage();
+  selectHit(target * PAGE_SIZE);
+  els.list.firstElementChild?.scrollIntoView({
+    behavior: prefersReduced ? "auto" : "smooth",
+    block: "nearest",
+  });
 }
 
 function selectHit(index) {
@@ -245,10 +287,11 @@ function selectHit(index) {
   if (!hit) return;
   state.active = index;
 
-  [...els.list.children].forEach((item, itemIndex) => {
-    item.dataset.active = itemIndex === index ? "true" : "false";
+  [...els.list.children].forEach((item) => {
+    const isActive = Number(item.dataset.index) === index;
+    item.dataset.active = isActive ? "true" : "false";
     const button = item.querySelector("button");
-    if (itemIndex === index) {
+    if (isActive) {
       button?.setAttribute("aria-current", "true");
     } else {
       button?.removeAttribute("aria-current");
@@ -315,7 +358,7 @@ async function runSearch(rawQuery) {
 
   try {
     const scope = els.scope?.value || "";
-    const limit = Number(els.limit?.value) || 8;
+    const limit = Number(els.limit?.value) || 30;
     const payload = await bridge.apiGet("search", {
       q: query,
       k: limit,
@@ -571,6 +614,8 @@ function boot() {
   };
   els.scope?.addEventListener("change", rerunIfIdle);
   els.limit?.addEventListener("change", rerunIfIdle);
+  els.pagerPrev?.addEventListener("click", () => goToPage(-1));
+  els.pagerNext?.addEventListener("click", () => goToPage(1));
 
   els.checkUpdate?.addEventListener("click", () => {
     if (!state.hasIndex) handleFirstDownload();

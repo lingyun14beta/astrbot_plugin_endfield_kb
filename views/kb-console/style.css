@@ -451,6 +451,66 @@ body {
   list-style: none;
 }
 
+.ark-results:has(.ark-pager:not([hidden])) .ark-list {
+  padding-block-end: 3rem;
+}
+
+.ark-pager {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-block-start: 1rem;
+  padding-block: 0.7rem;
+  border-block-start: 1px solid var(--ark-rule-strong);
+  background: var(--ark-paper);
+  box-shadow: 0 -10px 18px -14px color-mix(in srgb, var(--ark-ink) 45%, transparent);
+}
+
+.ark-pager[hidden] {
+  display: none;
+}
+
+.ark-pager-btn {
+  border: 1px solid var(--ark-rule-strong);
+  background: transparent;
+  color: var(--ark-ink);
+  font: 400 12px/1 var(--ark-font-cjk);
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  transition:
+    background 160ms var(--ark-ease),
+    border-color 160ms var(--ark-ease);
+}
+
+.ark-pager-btn:hover:not(:disabled) {
+  background: var(--ark-surface);
+  border-color: var(--ark-ink);
+}
+
+.ark-pager-btn:disabled {
+  color: var(--ark-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ark-pager-btn:focus-visible {
+  outline: 2px solid var(--ark-signal);
+  outline-offset: 2px;
+}
+
+.ark-pager-status {
+  margin: 0;
+  font-family: var(--ark-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ark-muted);
+}
+
 .ark-item {
   border-block-end: 1px solid var(--ark-rule);
   animation: ark-reveal 520ms var(--ark-ease) both;
