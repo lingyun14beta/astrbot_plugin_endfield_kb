@@ -445,6 +445,7 @@ def search(
     query: str,
     top_k: int = 5,
     score_ratio: float = 0.45,
+    kinds: list[str] | None = None,
 ) -> list[Hit]:
     """在索引上做 BM25 检索，并用稀有词约束候选。
 
@@ -454,6 +455,7 @@ def search(
         top_k: 返回条数上限。
         score_ratio: 相对分数阈值。BM25 分数为负且越小越相关，
             仅保留不高于“最佳分数 × 该比例”的结果，用来砍掉陪跑项。
+        kinds: 只在给定的 kind 里检索（原文、档案、整理等）；None 表示全库。
 
     Returns:
         按相关度排序的命中列表。
@@ -464,12 +466,17 @@ def search(
     query_tokens = set(tokenize(query))
     con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
+        where = "fts MATCH ?"
+        params: list[object] = [expression]
+        if kinds:
+            where += " AND d.kind IN (" + ",".join("?" * len(kinds)) + ")"
+            params.extend(kinds)
         rows = con.execute(
             "SELECT d.doc_id, d.title, d.coll, d.kind, d.body, fts.tokens, d.refs,"
             " bm25(fts) AS score"
             " FROM fts JOIN docs d ON d.id = fts.rowid"
-            " WHERE fts MATCH ? ORDER BY score LIMIT ?",
-            (expression, max(top_k * 6, 20)),
+            f" WHERE {where} ORDER BY score LIMIT ?",
+            (*params, max(top_k * 6, 20)),
         ).fetchall()
         # 查询词的稀有度权重：靠“我/你”这类高频词命中不算数
         weights: dict[str, float] = {}

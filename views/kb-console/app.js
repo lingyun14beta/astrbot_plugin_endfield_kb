@@ -8,6 +8,8 @@ const els = {
   input: document.getElementById("q"),
   submit: document.getElementById("submit"),
   rewrite: document.getElementById("rewrite"),
+  scope: document.getElementById("scope"),
+  limit: document.getElementById("limit"),
   list: document.getElementById("list"),
   placeholder: document.getElementById("placeholder"),
   readout: document.getElementById("readout"),
@@ -312,9 +314,12 @@ async function runSearch(rawQuery) {
   renderSkeleton();
 
   try {
+    const scope = els.scope?.value || "";
+    const limit = Number(els.limit?.value) || 8;
     const payload = await bridge.apiGet("search", {
       q: query,
-      k: 8,
+      k: limit,
+      scope,
       rewrite: els.rewrite.checked ? 1 : 0,
     });
     const count = payload.count ?? 0;
@@ -322,7 +327,10 @@ async function runSearch(rawQuery) {
     const rewritten = payload.rewritten
       ? ` · 改写为 ${payload.used_query}`
       : "";
-    els.readout.textContent = `命中 ${count} 条 · ${elapsed} ms${rewritten}`;
+    const scopeNote = scope
+      ? ` · 仅${els.scope.options[els.scope.selectedIndex].textContent}`
+      : "";
+    els.readout.textContent = `命中 ${count} 条 · ${elapsed} ms${scopeNote}${rewritten}`;
     renderHits(payload);
     if (count > 0) selectHit(0);
   } catch (error) {
@@ -556,6 +564,13 @@ function boot() {
     els.input.value = button.dataset.q;
     runSearch(button.dataset.q);
   });
+
+  const rerunIfIdle = () => {
+    if (state.busy || !state.hasIndex) return;
+    if (els.input.value.trim()) runSearch(els.input.value);
+  };
+  els.scope?.addEventListener("change", rerunIfIdle);
+  els.limit?.addEventListener("change", rerunIfIdle);
 
   els.checkUpdate?.addEventListener("click", () => {
     if (!state.hasIndex) handleFirstDownload();

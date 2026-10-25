@@ -50,6 +50,20 @@ DEFAULT_INDEX_URLS = (
     f"{MS_BASE}/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip"
 )
 
+# 控制台「范围」筛选：界面选项 → 索引里的 kind
+SCOPE_KINDS: dict[str, tuple[str, ...]] = {
+    "story": ("original_story",),
+    "archive": ("archive",),
+    "wiki": (
+        "knowledge",
+        "story_wiki",
+        "character_wiki",
+        "character_activity_wiki",
+        "reference",
+    ),
+    "character": ("character_profile", "character_voice"),
+}
+
 REWRITE_SYSTEM = "你是检索词提取器。只输出关键词，不要解释、不要编号。"
 REWRITE_PROMPT = (
     "用户想找《明日方舟：终末地》里的一段剧情或设定，但他只记得大意。\n"
@@ -360,8 +374,10 @@ class EndfieldKBPlugin(Star):
         if not self.db_path:
             return error_response("索引尚未构建", status_code=503)
 
-        limit = request.query.get("k", 6, type=int) or 6
-        limit = max(1, min(limit, 10))
+        limit = request.query.get("k", 8, type=int) or 8
+        limit = max(1, min(limit, 50))
+        scope = (request.query.get("scope") or "").strip()
+        kinds = SCOPE_KINDS.get(scope)
         rewrite = str(request.query.get("rewrite", "0")).lower() in {"1", "true", "yes"}
 
         started = time.perf_counter()
@@ -370,7 +386,7 @@ class EndfieldKBPlugin(Star):
             keywords = await self._keywords(query, "")
             if keywords:
                 used = keywords
-        hits = search(self.db_path, used, top_k=limit)
+        hits = search(self.db_path, used, top_k=limit, kinds=kinds)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
 
         return json_response(
@@ -378,6 +394,7 @@ class EndfieldKBPlugin(Star):
                 "query": query,
                 "used_query": used,
                 "rewritten": used != query,
+                "scope": scope,
                 "elapsed_ms": elapsed_ms,
                 "count": len(hits),
                 "hits": [

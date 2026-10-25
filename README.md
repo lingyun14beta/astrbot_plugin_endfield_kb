@@ -138,6 +138,13 @@ zmd 帮助
 
 插件详情页打开「知识库控制台」：检索、查看完整正文、展开出处、切换暗色主题，竖屏自动重排。
 
+输入框下面两个筛选：
+
+- **范围**：全部 / 剧情原文 / 中枢档案 / 整理资料 / 角色资料。切换即用当前查询重跑
+- **条数**：5 / 8 / 15 / 30 / 50，默认 8
+
+范围只收窄候选集合，不改变排序；命中条数还会被相对分数阈值再砍一次，所以实际返回常少于所选条数。
+
 控制台里还有两个按钮：
 
 - **检查更新**：对比本地与远端版本；发现新版本时按钮变成「更新到 x.y.z」，再点一次即下载安装
@@ -163,7 +170,7 @@ zmd 帮助
 | 路由 | 方法 | 用途 |
 |---|---|---|
 | `/astrbot_plugin_endfield_kb/stats` | GET | 篇数、字数、体积、构建时间、语料版本、分类计数 |
-| `/astrbot_plugin_endfield_kb/search` | GET | `q` 查询词、`k` 条数、`rewrite=1` 启用改写 |
+| `/astrbot_plugin_endfield_kb/search` | GET | `q` 查询词、`k` 条数（≤50）、`scope` 范围、`rewrite=1` 启用改写 |
 | `/astrbot_plugin_endfield_kb/updates` | GET | 对比本地与远端版本 |
 | `/astrbot_plugin_endfield_kb/update` | POST | 下载并安装最新索引 |
 | `/astrbot_plugin_endfield_kb/upload` | POST | 接收手动上传的索引文件 |

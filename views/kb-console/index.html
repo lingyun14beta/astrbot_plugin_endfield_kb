@@ -55,15 +55,37 @@
           </button>
         </form>
         <div class="ark-query-meta">
-          <p class="ark-hint" id="query-hint">
-            支持长原句、少量错字与 OCR 噪声；按 <kbd>/</kbd> 聚焦输入框。
-          </p>
+          <div class="ark-filters" role="group" aria-label="检索范围与条数">
+            <label class="ark-field">
+              <span class="ark-field-label">范围</span>
+              <select id="scope" name="scope">
+                <option value="">全部</option>
+                <option value="story">剧情原文</option>
+                <option value="archive">中枢档案</option>
+                <option value="wiki">整理资料</option>
+                <option value="character">角色资料</option>
+              </select>
+            </label>
+            <label class="ark-field">
+              <span class="ark-field-label">条数</span>
+              <select id="limit" name="limit">
+                <option value="5">5</option>
+                <option value="8" selected>8</option>
+                <option value="15">15</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+          </div>
           <label class="ark-toggle">
             <input id="rewrite" type="checkbox" />
             <span>关键词改写</span>
             <span class="ark-toggle-note">调用对话模型，较慢</span>
           </label>
         </div>
+        <p class="ark-hint" id="query-hint">
+          支持长原句、少量错字与 OCR 噪声；按 <kbd>/</kbd> 聚焦输入框。
+        </p>
         <ul class="ark-examples" id="examples" aria-label="示例查询">
           <li><button type="button" data-q="围陋村植禾">围陋村植禾</button></li>
           <li><button type="button" data-q="小禾庄 祈愿树">小禾庄 祈愿树</button></li>
