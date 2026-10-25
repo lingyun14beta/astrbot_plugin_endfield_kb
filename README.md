@@ -172,9 +172,11 @@ zmd 帮助
 ## 许可
 
 - **代码**：AGPL-3.0-or-later，见 [LICENSE](LICENSE)
-- **索引文件**：不属于代码，不适用 AGPL；使用受数据仓库的 `LICENSE-INDEX.txt` 约束
+- **索引数据**：权利保留，不属于代码，不适用 AGPL；仅授予下载与本地检索使用，
+  条款见数据仓库的 [LICENSE-INDEX.txt](https://github.com/lingyun14beta/astrbot-endfield-kb-index/blob/main/LICENSE-INDEX.txt)
 - **游戏内容**：名称、文本及相关内容的权利归上海鹰角开拓者网络科技有限公司及相关权利人
 - **整理内容**：权利归 PRTS.chat
+- **未纳入**：PRTS Wiki《泰拉年表》（CC BY-NC-SA 4.0）与《明日方舟》语料
 
 数据来源：PRTS.chat 终末地资料集（release 1.6.3）
 <https://modelscope.cn/datasets/HTiantian/prts-agent-corpus-endfield>
