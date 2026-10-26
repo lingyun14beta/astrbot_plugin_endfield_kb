@@ -36,6 +36,30 @@
     "_special": "select_provider",
     "default": ""
   },
+  "notify_enable": {
+    "description": "版本推送",
+    "hint": "定时查询终末地正式版与预下载版本，有变化时推送到下面列出的会话。与索引更新无关。",
+    "type": "bool",
+    "default": true
+  },
+  "notify_interval": {
+    "description": "检查间隔（分钟）",
+    "hint": "最小 5 分钟。版本以天为单位变化，不需要查得太密。",
+    "type": "int",
+    "default": 60
+  },
+  "notify_pre_download": {
+    "description": "通知预下载",
+    "hint": "预下载开放与关闭时也推送；关闭后只推正式版本更新。",
+    "type": "bool",
+    "default": true
+  },
+  "notify_umos": {
+    "description": "推送会话",
+    "hint": "每行一个 UMO，例如 aiocqhttp:GroupMessage:123456。管理员也可以用 /zmd订阅 让插件自动写入。",
+    "type": "list",
+    "default": []
+  },
   "top_k": {
     "description": "默认返回条数",
     "hint": "模型没有指定 top_k 时使用，范围 1-10。",

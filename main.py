@@ -18,14 +18,15 @@ from urllib.parse import urlparse
 from pydantic.dataclasses import dataclass
 
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
+from astrbot.api.message_components import Plain
 from astrbot.api.star import Context, Star
 from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
 
-from . import index_fetch
+from . import index_fetch, notify
 from .endfield_kb import KIND_LABELS, SCHEMA_VERSION, kind_counts, search
 from .index_store import (
     decompress,
@@ -91,7 +92,10 @@ COMMAND_HELP = (
     "  /zmd状态        索引篇数、语料版本与体积\n"
     "  /zmd重载        重新扫描本地索引\n"
     "  /zmd更新        检查并下载最新索引\n"
-    "  /zmd帮助        本条说明"
+    "  /zmd帮助        本条说明\n"
+    "  /zmd订阅        当前会话加入版本推送（管理员）\n"
+    "  /zmd退订        移出版本推送（管理员）\n"
+    "  /zmd推送状态    订阅列表与最近检查时间（管理员）"
 )
 
 
@@ -149,6 +153,7 @@ class EndfieldKBPlugin(Star):
         self.meta: dict[str, str] = {}
         self.index_source = "missing"
         self.local_release = ""
+        self._notify_task: asyncio.Task | None = None
         self._load_index()
         context.register_web_api(
             f"/{PLUGIN_NAME}/stats",
@@ -270,11 +275,24 @@ class EndfieldKBPlugin(Star):
             )
 
     async def initialize(self) -> None:
-        """插件激活时注册 LLM 工具。"""
+        """插件激活时注册 LLM 工具并启动版本检查。"""
         if not self.db_path:
             logger.warning("[终末地KB] 索引缺失，工具已注册但会返回提示信息")
         self.context.add_llm_tools(EndfieldSearchTool(plugin=self))
+        self._notify_task = asyncio.create_task(self._notify_loop())
         logger.info("[终末地KB] 已注册工具 endfield_kb_search")
+
+    async def terminate(self) -> None:
+        """插件卸载/重载时停掉后台检查。"""
+        if self._notify_task is None:
+            return
+        self._notify_task.cancel()
+        try:
+            await self._notify_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._notify_task = None
 
     # ------------------------------------------------------------------ 检索
 
@@ -654,6 +672,91 @@ class EndfieldKBPlugin(Star):
             target.unlink(missing_ok=True)
         return json_response(result)
 
+    # ------------------------------------------------------------------ 版本推送
+
+    def _notify_state_path(self) -> Path:
+        """通知状态的落盘位置，与索引目录同级。"""
+        return self.index_dir.parent / notify.STATE_NAME
+
+    def _notify_umos(self) -> list[str]:
+        """读取推送目标，过滤掉空值和异常类型。"""
+        raw = self.config.get("notify_umos") or []
+        if not isinstance(raw, list):
+            return []
+        return [str(item).strip() for item in raw if str(item).strip()]
+
+    def _save_config(self) -> None:
+        """把运行时改动的配置写回文件。"""
+        try:
+            self.config.save_config()
+        except Exception as exc:  # noqa: BLE001 - 保存失败不影响当前会话
+            logger.warning(f"[终末地KB] 配置保存失败：{exc}")
+
+    async def _notify_loop(self) -> None:
+        """按间隔检查版本；异常只记日志，不退出循环。"""
+        while True:
+            try:
+                await self._check_version_notice()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[终末地KB] 版本检查失败：{exc}")
+            interval = max(5, int(self.config.get("notify_interval", 60) or 60))
+            await asyncio.sleep(interval * 60)
+
+    async def _check_version_notice(self) -> None:
+        """查一次版本，有变化就推送到已订阅的会话。"""
+        if not self.config.get("notify_enable", True):
+            return
+        path = self._notify_state_path()
+        state = notify.load_state(path)
+        stored = str(state.get("main") or "")
+        status = await asyncio.to_thread(notify.fetch_status, stored)
+        main = status["main"]
+        pre = status["pre"]
+        stamp = time.strftime("%Y-%m-%d %H:%M")
+
+        if not stored:
+            notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
+            logger.info(f"[终末地KB] 首次记录版本 {main}，静默写入不发通知")
+            return
+
+        messages: list[str] = []
+        if notify.is_newer(main, stored):
+            messages.append(
+                notify.render(
+                    "main", main, stored, status["total"], status["incremental"]
+                )
+            )
+        if self.config.get("notify_pre_download", True):
+            old_pre = str(state.get("pre") or "")
+            if pre and pre != old_pre:
+                messages.append(
+                    notify.render(
+                        "pre", pre, old_pre, status["total"], status["pre_incremental"]
+                    )
+                )
+            elif not pre and old_pre:
+                messages.append(notify.render("pre-remove", "", old_pre, 0, 0))
+
+        umos = self._notify_umos()
+        if messages and umos:
+            sent = 0
+            for umo in umos:
+                for text in messages:
+                    try:
+                        if await self.context.send_message(
+                            umo, MessageChain([Plain(text=text)])
+                        ):
+                            sent += 1
+                    except Exception as exc:  # noqa: BLE001 - 单个会话失败不影响其他
+                        logger.warning(f"[终末地KB] 推送到 {umo} 失败：{exc}")
+            if not sent:
+                logger.warning("[终末地KB] 本次通知全部失败，保持旧状态下轮重试")
+                return
+
+        notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
+
     # ------------------------------------------------------------------ 指令
 
     def _status_text(self) -> str:
@@ -734,3 +837,58 @@ class EndfieldKBPlugin(Star):
             )
         else:
             yield event.plain_result(result.get("message") or "更新失败")
+
+    @filter.command("zmd订阅", desc="把当前会话加入版本推送（仅管理员）")
+    async def zmd_subscribe(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能修改推送订阅。")
+            return
+        umo = event.unified_msg_origin
+        umos = self._notify_umos()
+        if umo in umos:
+            yield event.plain_result(f"本会话已订阅：\n{umo}")
+            return
+        umos.append(umo)
+        self.config["notify_umos"] = umos
+        self._save_config()
+        yield event.plain_result(f"已订阅：{umo}\n当前共 {len(umos)} 个会话。")
+
+    @filter.command("zmd退订", desc="把当前会话移出版本推送（仅管理员）")
+    async def zmd_unsubscribe(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能修改推送订阅。")
+            return
+        umo = event.unified_msg_origin
+        umos = self._notify_umos()
+        if umo not in umos:
+            yield event.plain_result(f"本会话不在订阅列表里：\n{umo}")
+            return
+        umos = [item for item in umos if item != umo]
+        self.config["notify_umos"] = umos
+        self._save_config()
+        yield event.plain_result(f"已退订。\n当前共 {len(umos)} 个会话。")
+
+    @filter.command("zmd推送状态", desc="查看版本推送的订阅与最近检查时间")
+    async def zmd_push_status(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能查看推送状态。")
+            return
+        state = notify.load_state(self._notify_state_path())
+        umos = self._notify_umos()
+        interval = max(5, int(self.config.get("notify_interval", 60) or 60))
+        lines = [
+            "版本推送",
+            f"开关：{'开' if self.config.get('notify_enable', True) else '关'}",
+            f"间隔：{interval} 分钟",
+            f"预下载通知：{'开' if self.config.get('notify_pre_download', True) else '关'}",
+            f"订阅：{len(umos)} 个",
+        ]
+        if umos:
+            lines.extend(f"  {umo}" for umo in umos)
+        else:
+            lines.append("  （空）")
+        lines.append(
+            f"已记录：正式 {state.get('main') or '-'} / 预下载 {state.get('pre') or '-'}"
+        )
+        lines.append(f"最近检查：{state.get('checked_at') or '-'}")
+        yield event.plain_result("\n".join(lines))
