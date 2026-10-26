@@ -65,10 +65,21 @@ SCOPE_KINDS: dict[str, tuple[str, ...]] = {
 }
 
 REWRITE_SYSTEM = "你是检索词提取器。只输出关键词，不要解释、不要编号。"
+
+# 从当前语料里统计出的高频设定词；只做提示，不改写用户本意
+REWRITE_GLOSSARY = (
+    "地点：武陵、谷地、帝江号、小禾庄、源石发电站、围陋村、心脏修缮站\n"
+    "势力：终末地工业、工团、天师、裂地者、天使\n"
+    "概念：协议源石、源石技术、传送网络、侵蚀、巨兽心脏"
+)
+
 REWRITE_PROMPT = (
     "用户想找《明日方舟：终末地》里的一段剧情或设定，但他只记得大意。\n"
     "请把下面的描述改写成 5 到 10 个适合全文检索的中文关键词，"
-    "优先使用游戏里可能出现的专名、地名、人名和书面词，不要输出原句。\n\n"
+    "优先使用游戏里可能出现的专名、地名和书面词，不要输出原句。\n\n"
+    "可以参考下面的常见词，但只在描述确实涉及时才用，最多挑 2 个：\n"
+    "{glossary}\n\n"
+    "描述里已经出现的专名要原样保留，不要换成同义词。\n\n"
     "描述：{query}\n\n"
     "只输出一行关键词，用空格分隔。"
 )
@@ -295,7 +306,9 @@ class EndfieldKBPlugin(Star):
         try:
             response = await asyncio.wait_for(
                 provider.text_chat(
-                    prompt=REWRITE_PROMPT.format(query=query),
+                    prompt=REWRITE_PROMPT.format(
+                        glossary=REWRITE_GLOSSARY, query=query
+                    ),
                     system_prompt=REWRITE_SYSTEM,
                     contexts=[],
                 ),
