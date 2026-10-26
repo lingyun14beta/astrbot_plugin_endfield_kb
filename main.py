@@ -51,6 +51,9 @@ DEFAULT_INDEX_URLS = (
     f"{MS_BASE}/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip"
 )
 
+# 推送失败最多重试的轮数；超过就把版本记下，不再重复尝试
+MAX_PUSH_RETRY = 3
+
 # 控制台「范围」筛选：界面选项 → 索引里的 kind
 SCOPE_KINDS: dict[str, tuple[str, ...]] = {
     "story": ("original_story",),
@@ -751,9 +754,29 @@ class EndfieldKBPlugin(Star):
                             sent += 1
                     except Exception as exc:  # noqa: BLE001 - 单个会话失败不影响其他
                         logger.warning(f"[终末地KB] 推送到 {umo} 失败：{exc}")
-            if not sent:
-                logger.warning("[终末地KB] 本次通知全部失败，保持旧状态下轮重试")
-                return
+            if sent:
+                logger.info(f"[终末地KB] 版本通知已发送 {sent} 条")
+            else:
+                attempts = int(state.get("retry") or 0) + 1
+                if attempts < MAX_PUSH_RETRY:
+                    notify.save_state(
+                        path,
+                        {
+                            "main": stored,
+                            "pre": str(state.get("pre") or ""),
+                            "checked_at": stamp,
+                            "retry": str(attempts),
+                        },
+                    )
+                    logger.warning(
+                        f"[终末地KB] 版本通知全部失败（第 {attempts}/{MAX_PUSH_RETRY} 次），"
+                        "保留旧状态下轮重试"
+                    )
+                    return
+                logger.error(
+                    f"[终末地KB] 版本通知连续 {MAX_PUSH_RETRY} 次失败，放弃本轮，"
+                    f"版本记为 {main}"
+                )
 
         notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
 
