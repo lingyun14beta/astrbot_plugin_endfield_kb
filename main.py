@@ -73,9 +73,6 @@ REWRITE_PROMPT = (
     "只输出一行关键词，用空格分隔。"
 )
 
-# 查询本身很短、且没有句子标点时，说明用户已经在给关键词，跳过改写省钱
-SENTENCE_RE = re.compile(r"[。！？；，,]")
-
 COMMAND_HELP = (
     "终末地知识库 · zmd\n"
     "  zmd <关键词>      检索，可直接贴原文片段\n"
@@ -126,12 +123,7 @@ class EndfieldSearchTool(FunctionTool[AstrAgentContext]):
         query: str,
         top_k: int = 5,
     ) -> ToolExecResult:
-        umo = ""
-        try:
-            umo = context.context.event.unified_msg_origin
-        except Exception:  # noqa: BLE001 - 上下文缺失时退回全局模型
-            umo = ""
-        return await self.plugin.search_text(query, umo, top_k)
+        return await self.plugin.search_text(query, top_k)
 
 
 class EndfieldKBPlugin(Star):
@@ -276,19 +268,18 @@ class EndfieldKBPlugin(Star):
     # ------------------------------------------------------------------ 检索
 
     async def _keywords(self, query: str, umo: str) -> str:
-        """用对话模型把长描述压成检索关键词。
+        """用对话模型把描述压成检索关键词。
+
+        只在调用方明确要求时执行（控制台勾选、或显式调用），不做长度判断：
+        勾了就一定会问模型，没勾就一次都不问。
 
         Args:
             query: 用户的原始描述。
             umo: 会话来源，用于选择该会话偏好的模型。
 
         Returns:
-            空格分隔的关键词；不需要或失败时返回空串。
+            空格分隔的关键词；失败时返回空串。
         """
-        if not self.config.get("enable_rewrite", True):
-            return ""
-        if len(query) < 24 and not SENTENCE_RE.search(query):
-            return ""
         provider = None
         provider_id = str(self.config.get("rewrite_provider") or "").strip()
         if provider_id:
@@ -317,12 +308,11 @@ class EndfieldKBPlugin(Star):
         tokens = [t for t in re.split(r"[\s,，、;；|]+", text) if t]
         return " ".join(tokens[:10])
 
-    async def search_text(self, query: str, umo: str, top_k: int | None = None) -> str:
+    async def search_text(self, query: str, top_k: int | None = None) -> str:
         """执行一次检索并返回给模型阅读的文本。
 
         Args:
             query: 检索词或描述。
-            umo: 会话来源。
             top_k: 返回条数，缺省读配置。
 
         Returns:
@@ -341,10 +331,7 @@ class EndfieldKBPlugin(Star):
         limit = max(1, min(limit, 10))
         ratio = float(self.config.get("score_ratio", 45)) / 100
 
-        keywords = await self._keywords(query, umo)
-        hits = search(self.db_path, keywords or query, top_k=limit, score_ratio=ratio)
-        if not hits and keywords:
-            hits = search(self.db_path, query, top_k=limit, score_ratio=ratio)
+        hits = search(self.db_path, query, top_k=limit, score_ratio=ratio)
         if not hits:
             return f"没有检索到与「{query}」相关的内容。可以换更具体的专名或原文片段再试。"
 
@@ -726,6 +713,4 @@ class EndfieldKBPlugin(Star):
         query = text
         if head in {"查", "search"}:
             query = rest.strip() or text
-        yield event.plain_result(
-            await self.search_text(query, event.unified_msg_origin, 5)
-        )
+        yield event.plain_result(await self.search_text(query, 5))

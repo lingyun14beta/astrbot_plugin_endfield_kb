@@ -29,20 +29,11 @@
     },
     "default": []
   },
-  "enable_rewrite": {
-    "description": "关键词改写",
-    "hint": "开启后，较长的描述会先交给对话模型压成检索关键词，再查本地索引。短关键词查询会自动跳过以节省调用。",
-    "type": "bool",
-    "default": true
-  },
   "rewrite_provider": {
     "description": "关键词改写模型",
-    "hint": "选择用来压缩描述的模型；留空则用当前会话正在使用的模型。",
+    "hint": "控制台勾选「关键词改写」时用它压缩描述；留空则用当前会话的模型。LLM 工具调用不会改写，直接检索。",
     "type": "string",
     "_special": "select_provider",
-    "condition": {
-      "enable_rewrite": true
-    },
     "default": ""
   },
   "top_k": {
