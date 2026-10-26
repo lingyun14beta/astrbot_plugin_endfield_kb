@@ -176,10 +176,12 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `max_chars` | 1800 | 单次返回正文上限 |
 | `score_ratio` | 45 | BM25 相对阈值，越小越严格 |
 | `rewrite_timeout` | 12 | 关键词改写超时（秒） |
-| `notify_enable` | true | 版本推送总开关 |
-| `notify_interval` | 60 | 版本检查间隔（分钟，最小 5） |
-| `notify_pre_download` | true | 是否推送预下载开放/关闭 |
-| `notify_umos` | 空 | 推送目标会话，一行一个 UMO；/zmd订阅 会自动写入 |
+| `notify_group.enable` | true | 版本推送总开关 |
+| `notify_group.interval` | 60 | 版本检查间隔（分钟，最小 5） |
+| `notify_group.pre_download` | true | 是否推送预下载开放/关闭 |
+| `notify_group.umos` | 空 | 推送目标会话，一行一个 UMO；/zmd订阅 会自动写入 |
+
+版本推送单独成组，配置页里显示为「版本推送」卡片，排在最后。
 
 控制台的「关键词改写」是硬开关：**勾上就一定调用模型改写，不勾就一次模型都不调用**（不再按查询长短自动跳过）。LLM 工具调用（`endfield_kb_search`）不做改写，模型传什么就查什么。
 

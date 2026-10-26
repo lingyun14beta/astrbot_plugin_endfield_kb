@@ -681,12 +681,35 @@ class EndfieldKBPlugin(Star):
         """通知状态的落盘位置，与索引目录同级。"""
         return self.index_dir.parent / notify.STATE_NAME
 
+    def _notify_conf(self) -> dict[str, Any]:
+        """读取版本推送配置；兼容早期写在顶层的几个键。"""
+        group = self.config.get("notify_group")
+        if isinstance(group, dict) and group:
+            return group
+        legacy: dict[str, Any] = {}
+        for new_key, old_key in (
+            ("enable", "notify_enable"),
+            ("interval", "notify_interval"),
+            ("pre_download", "notify_pre_download"),
+            ("umos", "notify_umos"),
+        ):
+            if old_key in self.config:
+                legacy[new_key] = self.config.get(old_key)
+        return legacy
+
     def _notify_umos(self) -> list[str]:
         """读取推送目标，过滤掉空值和异常类型。"""
-        raw = self.config.get("notify_umos") or []
+        raw = self._notify_conf().get("umos") or []
         if not isinstance(raw, list):
             return []
         return [str(item).strip() for item in raw if str(item).strip()]
+
+    def _set_notify_umos(self, umos: list[str]) -> None:
+        """把订阅列表写回配置并落盘。"""
+        group = dict(self._notify_conf())
+        group["umos"] = umos
+        self.config["notify_group"] = group
+        self._save_config()
 
     def _save_config(self) -> None:
         """把运行时改动的配置写回文件。"""
@@ -704,12 +727,12 @@ class EndfieldKBPlugin(Star):
                 raise
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"[终末地KB] 版本检查失败：{exc}")
-            interval = max(5, int(self.config.get("notify_interval", 60) or 60))
+            interval = max(5, int(self._notify_conf().get("interval", 60) or 60))
             await asyncio.sleep(interval * 60)
 
     async def _check_version_notice(self) -> None:
         """查一次版本，有变化就推送到已订阅的会话。"""
-        if not self.config.get("notify_enable", True):
+        if not self._notify_conf().get("enable", True):
             return
         path = self._notify_state_path()
         state = notify.load_state(path)
@@ -731,7 +754,7 @@ class EndfieldKBPlugin(Star):
                     "main", main, stored, status["total"], status["incremental"]
                 )
             )
-        if self.config.get("notify_pre_download", True):
+        if self._notify_conf().get("pre_download", True):
             old_pre = str(state.get("pre") or "")
             if pre and pre != old_pre:
                 messages.append(
@@ -872,8 +895,7 @@ class EndfieldKBPlugin(Star):
             yield event.plain_result(f"本会话已订阅：\n{umo}")
             return
         umos.append(umo)
-        self.config["notify_umos"] = umos
-        self._save_config()
+        self._set_notify_umos(umos)
         yield event.plain_result(f"已订阅：{umo}\n当前共 {len(umos)} 个会话。")
 
     @filter.command("zmd退订", desc="把当前会话移出版本推送（仅管理员）")
@@ -887,8 +909,7 @@ class EndfieldKBPlugin(Star):
             yield event.plain_result(f"本会话不在订阅列表里：\n{umo}")
             return
         umos = [item for item in umos if item != umo]
-        self.config["notify_umos"] = umos
-        self._save_config()
+        self._set_notify_umos(umos)
         yield event.plain_result(f"已退订。\n当前共 {len(umos)} 个会话。")
 
     @filter.command("zmd推送状态", desc="查看版本推送的订阅与最近检查时间")
@@ -898,12 +919,13 @@ class EndfieldKBPlugin(Star):
             return
         state = notify.load_state(self._notify_state_path())
         umos = self._notify_umos()
-        interval = max(5, int(self.config.get("notify_interval", 60) or 60))
+        conf = self._notify_conf()
+        interval = max(5, int(conf.get("interval", 60) or 60))
         lines = [
             "版本推送",
-            f"开关：{'开' if self.config.get('notify_enable', True) else '关'}",
+            f"开关：{'开' if conf.get('enable', True) else '关'}",
             f"间隔：{interval} 分钟",
-            f"预下载通知：{'开' if self.config.get('notify_pre_download', True) else '关'}",
+            f"预下载通知：{'开' if conf.get('pre_download', True) else '关'}",
             f"订阅：{len(umos)} 个",
         ]
         if umos:
