@@ -1321,10 +1321,32 @@ body {
   border: 1px solid var(--ark-rule-strong);
   background: var(--ark-paper);
   color: var(--ark-ink);
+  animation: ark-dialog-pop 260ms var(--ark-ease-out) both;
 }
 
 .ark-dialog::backdrop {
   background: rgb(0 0 0 / 0.5);
+  animation: ark-dialog-veil 220ms var(--ark-ease) both;
+}
+
+@keyframes ark-dialog-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ark-dialog-veil {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .ark-dialog-inner {
