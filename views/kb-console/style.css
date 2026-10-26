@@ -417,7 +417,6 @@ body {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--ark-detail-w);
-  align-items: start;
   background-image:
     linear-gradient(90deg, var(--ark-grid-major) 1px, transparent 1px),
     linear-gradient(0deg, var(--ark-grid-minor) 1px, transparent 1px);
