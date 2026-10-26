@@ -35,6 +35,7 @@ const els = {
   importFile: document.getElementById("import-file"),
   importUrl: document.getElementById("import-url"),
   importStatus: document.getElementById("import-status"),
+  importTrack: document.getElementById("import-track"),
   importSubmit: document.getElementById("import-submit"),
   importClose: document.getElementById("import-close"),
   importCancel: document.getElementById("import-cancel"),
@@ -177,6 +178,7 @@ function renderError(message) {
 
 function renderHits(payload) {
   clearList();
+  document.querySelector(".ark-shell")?.setAttribute("data-view", "results");
   els.placeholder.hidden = true;
   pulseResults();
   state.hits = payload.hits ?? [];
@@ -505,6 +507,11 @@ async function handleApplyUpdate() {
 
 let importMode = "file";
 
+function setImportTrack(state) {
+  if (!els.importTrack) return;
+  els.importTrack.dataset.state = state;
+}
+
 function setImportMode(mode) {
   importMode = mode;
   const isFile = mode === "file";
@@ -523,6 +530,7 @@ function openImportDialog() {
   els.importFile.value = "";
   els.importUrl.value = "";
   els.importStatus.textContent = "";
+  setImportTrack("idle");
   els.dialog.showModal();
   setImportMode("file");
 }
@@ -534,6 +542,7 @@ function closeImportDialog() {
 function finishImport(result) {
   state.hasIndex = true;
   markHasIndex();
+  setImportTrack("done");
   els.importStatus.textContent = `已导入 ${result.release || ""} · ${result.documents} 篇`;
   loadStats();
   window.setTimeout(closeImportDialog, 900);
@@ -554,15 +563,18 @@ async function submitImport(event) {
       return;
     }
     els.importSubmit.disabled = true;
+    setImportTrack("busy");
     els.importStatus.textContent = `上传 ${file.name}…`;
     try {
       const result = await bridge.upload("upload", file);
       if (!result.ok) {
+        setImportTrack("idle");
         els.importStatus.textContent = result.message || "导入失败";
         return;
       }
       finishImport(result);
     } catch (error) {
+      setImportTrack("idle");
       els.importStatus.textContent = error?.message || "导入失败";
     } finally {
       els.importSubmit.disabled = false;
@@ -580,15 +592,18 @@ async function submitImport(event) {
     return;
   }
   els.importSubmit.disabled = true;
+  setImportTrack("busy");
   els.importStatus.textContent = "下载中…";
   try {
     const result = await bridge.apiPost("import_url", { url });
     if (!result.ok) {
+      setImportTrack("idle");
       els.importStatus.textContent = result.message || "导入失败";
       return;
     }
     finishImport(result);
   } catch (error) {
+    setImportTrack("idle");
     els.importStatus.textContent = error?.message || "导入失败";
   } finally {
     els.importSubmit.disabled = false;
