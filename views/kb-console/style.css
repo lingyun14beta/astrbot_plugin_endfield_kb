@@ -862,12 +862,13 @@ body {
 
   .ark-input-wrap {
     border: 1px solid var(--ark-rule-strong);
-    padding-inline: 0.75rem;
+    padding-inline: 0.6rem;
     background: var(--ark-paper);
   }
 
   #q {
-    padding-block: 0.7rem;
+    padding-block: 0.42rem;
+    font-size: 0.95rem;
   }
 
   .ark-form::after {
@@ -878,7 +879,8 @@ body {
     flex: 0 0 auto;
     justify-content: center;
     min-block-size: auto;
-    padding-inline: 1.1rem;
+    padding-inline: 0.9rem;
+    font-size: 0.9rem;
   }
 
   .ark-examples button {
