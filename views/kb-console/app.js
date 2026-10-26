@@ -178,7 +178,6 @@ function renderError(message) {
 
 function renderHits(payload) {
   clearList();
-  document.querySelector(".ark-shell")?.setAttribute("data-view", "results");
   els.placeholder.hidden = true;
   pulseResults();
   state.hits = payload.hits ?? [];
