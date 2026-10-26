@@ -463,17 +463,13 @@ body {
 }
 
 .ark-pager {
-  position: sticky;
-  inset-block-end: 0;
-  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1rem;
   margin-block-start: 0.75rem;
-  padding-block: 0.65rem;
+  padding-block-start: 0.65rem;
   border-block-start: 1px solid var(--ark-rule-strong);
-  background: var(--ark-paper);
 }
 
 .ark-pager[hidden] {
@@ -826,7 +822,6 @@ body {
 
   .ark-pager {
     margin-block-start: 0.5rem;
-    box-shadow: 0 -10px 18px -14px color-mix(in srgb, var(--ark-ink) 45%, transparent);
   }
 
   .ark-topbar {
