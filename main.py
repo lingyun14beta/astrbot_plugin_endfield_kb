@@ -85,13 +85,13 @@ REWRITE_PROMPT = (
 )
 
 COMMAND_HELP = (
-    "终末地知识库 · zmd\n"
-    "  zmd <关键词>      检索，可直接贴原文片段\n"
-    "  zmd 查 <关键词>   强制检索（查询词正好是“更新/帮助”等保留词时）\n"
-    "  zmd               查看索引状态\n"
-    "  zmd 重载          重新读取本地索引\n"
-    "  zmd 更新          检查并下载最新索引\n"
-    "  zmd 帮助          本条说明"
+    "终末地知识库 · 指令\n"
+    "  /zmd <关键词>   检索，可直接贴原文片段\n"
+    "  /zmd            不带关键词，显示索引状态\n"
+    "  /zmd状态        索引篇数、语料版本与体积\n"
+    "  /zmd重载        重新扫描本地索引\n"
+    "  /zmd更新        检查并下载最新索引\n"
+    "  /zmd帮助        本条说明"
 )
 
 
@@ -683,47 +683,54 @@ class EndfieldKBPlugin(Star):
         lines.append(f"文件：{self.db_path.name}（{self.index_source}）")
         return "\n".join(lines)
 
-    @filter.command("zmd")
-    async def zmd(self, event: AstrMessageEvent):
-        """终末地知识库：检索、状态、重载、帮助。"""
-        text = (event.message_str or "").strip()
-        for prefix in ("/zmd", "zmd", "/ZMD", "ZMD"):
-            if text.startswith(prefix):
-                text = text[len(prefix) :]
-                break
-        text = text.strip()
+    @staticmethod
+    def _command_args(event: AstrMessageEvent) -> str:
+        """取指令名之后的剩余文本，用于检索关键词。"""
+        parts = (event.message_str or "").strip().split(None, 1)
+        return parts[1].strip() if len(parts) > 1 else ""
 
-        if not text:
+    @filter.command("zmd", desc="检索终末地知识库；不带关键词时显示状态")
+    async def zmd_search(self, event: AstrMessageEvent):
+        query = self._command_args(event)
+        if not query:
             yield event.plain_result(self._status_text() + "\n\n" + COMMAND_HELP)
             return
-
-        head, _, rest = text.partition(" ")
-        head = head.strip()
-
-        if head in {"帮助", "help", "?"}:
-            yield event.plain_result(COMMAND_HELP)
+        legacy = {
+            "帮助": "zmd帮助",
+            "重载": "zmd重载",
+            "更新": "zmd更新",
+            "状态": "zmd状态",
+        }
+        if query in legacy:
+            yield event.plain_result(f"指令已拆分，请改用 /{legacy[query]}")
             return
-        if head in {"重载", "reload"}:
-            self._load_index()
-            yield event.plain_result("索引已重载。\n\n" + self._status_text())
-            return
-        if head in {"更新", "update"}:
-            yield event.plain_result("正在检查并下载更新…")
-            try:
-                result = await self.apply_update()
-            except Exception as exc:  # noqa: BLE001 - 网络/校验失败统一提示
-                yield event.plain_result(f"更新失败：{exc}")
-                return
-            if result.get("ok"):
-                yield event.plain_result(
-                    f"索引已更新：{result.get('release')} / {result.get('documents')} 篇\n\n"
-                    + self._status_text()
-                )
-            else:
-                yield event.plain_result(result.get("message") or "更新失败")
-            return
-
-        query = text
-        if head in {"查", "search"}:
-            query = rest.strip() or text
         yield event.plain_result(await self.search_text(query, 5))
+
+    @filter.command("zmd状态", desc="查看索引篇数、语料版本与磁盘占用")
+    async def zmd_status(self, event: AstrMessageEvent):
+        yield event.plain_result(self._status_text())
+
+    @filter.command("zmd帮助", desc="列出全部 zmd 指令")
+    async def zmd_help(self, event: AstrMessageEvent):
+        yield event.plain_result(COMMAND_HELP)
+
+    @filter.command("zmd重载", desc="重新扫描本地索引文件")
+    async def zmd_reload(self, event: AstrMessageEvent):
+        self._load_index()
+        yield event.plain_result("索引已重载。\n\n" + self._status_text())
+
+    @filter.command("zmd更新", desc="检查并安装最新索引")
+    async def zmd_update(self, event: AstrMessageEvent):
+        yield event.plain_result("正在检查并下载更新…")
+        try:
+            result = await self.apply_update()
+        except Exception as exc:  # noqa: BLE001 - 网络/校验失败统一提示
+            yield event.plain_result(f"更新失败：{exc}")
+            return
+        if result.get("ok"):
+            yield event.plain_result(
+                f"索引已更新：{result.get('release')} / {result.get('documents')} 篇\n\n"
+                + self._status_text()
+            )
+        else:
+            yield event.plain_result(result.get("message") or "更新失败")
