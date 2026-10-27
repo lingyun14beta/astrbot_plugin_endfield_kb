@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sqlite3
 import time
@@ -24,6 +25,7 @@ except ImportError:  # pragma: no cover - AstrBot 运行环境一定带 numpy
 
 VECTOR_NAME = "semantic_vectors.npy"
 IDS_NAME = "semantic_ids.json"
+DOCS_NAME = "semantic_docs.json"
 META_NAME = "semantic_meta.json"
 
 # 单条文档送进模型的最大字符数；语料平均 210 字，长档案截断即可
@@ -103,40 +105,37 @@ def _doc_text(title: str, body: str) -> str:
     return text[:MAX_CHARS]
 
 
-async def build(
-    db_path: Path,
+def _doc_hash(text: str) -> str:
+    """文档内容指纹，用来判断哪些文档需要重新编码。"""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+
+def _load_existing(
     out_dir: Path,
+) -> tuple[list[str], Any, dict[str, str], int]:
+    """读取上次构建的 id、向量与指纹，用于增量复用。"""
+    docs_path = out_dir / DOCS_NAME
+    vector_path = out_dir / VECTOR_NAME
+    if np is None or not docs_path.is_file() or not vector_path.is_file():
+        return [], None, {}, 0
+    try:
+        docs = json.loads(docs_path.read_text(encoding="utf-8"))
+        matrix = np.load(vector_path).astype(np.float32)
+    except (OSError, ValueError):
+        return [], None, {}, 0
+    ids = [str(item.get("id")) for item in docs]
+    hashes = {str(item.get("id")): str(item.get("hash") or "") for item in docs}
+    return ids, matrix, hashes, int(matrix.shape[1])
+
+
+async def _embed_batches(
     provider: Any,
-    log: LogFn = print,
-) -> dict[str, Any]:
-    """把索引里的全部文档编码成向量并落盘。
-
-    Args:
-        db_path: 索引 sqlite 路径。
-        out_dir: 向量文件输出目录，通常与索引同目录。
-        provider: 嵌入模型实例。
-        log: 进度输出函数。
-
-    Returns:
-        含 count、dim、model、built_at 的元信息。
-
-    Raises:
-        SemanticError: numpy 缺失、索引为空或模型调用失败。
-    """
-    if np is None:
-        raise SemanticError("当前环境缺少 numpy，无法构建向量索引")
-
-    rows = _read_docs(db_path)
-    if not rows:
-        raise SemanticError("索引里没有文档，无法构建向量")
-
-    ids: list[str] = []
-    texts: list[str] = []
-    for doc_id, title, body in rows:
-        ids.append(str(doc_id))
-        texts.append(_doc_text(title, body))
-
-    vectors: list[list[float]] = []
+    texts: list[str],
+    log: LogFn,
+    dim: int,
+) -> tuple[dict[int, list[float]], int]:
+    """把待编码文本分批送进模型，返回下标到向量的映射与维度。"""
+    vectors: dict[int, list[float]] = {}
     chunk = 256
     total = len(texts)
     for start in range(0, total, chunk):
@@ -151,22 +150,104 @@ async def build(
                 f"编码第 {start + 1}–{start + len(batch)} 篇超时（600 秒）"
             ) from exc
         except Exception as exc:  # noqa: BLE001 - 统一包装成模块异常
-            raise SemanticError(f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}") from exc
+            raise SemanticError(
+                f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}"
+            ) from exc
         if len(part) != len(batch):
             raise SemanticError("模型返回的向量数量与输入不一致")
-        vectors.extend(part)
+        if dim <= 0:
+            dim = len(part[0])
+        for offset, vector in enumerate(part):
+            if len(vector) != dim:
+                raise SemanticError("模型返回的向量维度不一致")
+            vectors[start + offset] = vector
         log(f"已编码 {min(start + chunk, total)}/{total}")
+    return vectors, dim
 
-    matrix = np.asarray(vectors, dtype=np.float32)
+
+async def build(
+    db_path: Path,
+    out_dir: Path,
+    provider: Any,
+    log: LogFn = print,
+    incremental: bool = True,
+) -> dict[str, Any]:
+    """把索引里的文档编码成向量并落盘；默认只编码新增或内容变化的文档。
+
+    Args:
+        db_path: 索引 sqlite 路径。
+        out_dir: 向量文件输出目录，通常与索引同目录。
+        provider: 嵌入模型实例。
+        log: 进度输出函数。
+        incremental: 是否复用上次的向量；维度变化或首次构建时自动全量。
+
+    Returns:
+        含 count、dim、model、built_at、reused、added 的元信息。
+
+    Raises:
+        SemanticError: numpy 缺失、索引为空或模型调用失败。
+    """
+    if np is None:
+        raise SemanticError("当前环境缺少 numpy，无法构建向量索引")
+
+    rows = _read_docs(db_path)
+    if not rows:
+        raise SemanticError("索引里没有文档，无法构建向量")
+
+    ids = [str(row[0]) for row in rows]
+    texts = [_doc_text(row[1], row[2]) for row in rows]
+    hashes = [_doc_hash(text) for text in texts]
+
+    old_ids, old_matrix, old_hashes, old_dim = _load_existing(out_dir)
+    dim = _dim_of(provider)
+    if incremental and old_matrix is not None and (dim <= 0 or dim == old_dim):
+        log(f"增量构建：复用 {len(old_ids)} 条旧向量")
+        reuse = True
+        dim = old_dim if dim <= 0 else dim
+    else:
+        if incremental and old_matrix is not None:
+            log(f"向量维度从 {old_dim} 变为 {dim}，改为全量构建")
+        reuse = False
+        dim = _dim_of(provider)
+
+    need = [
+        index
+        for index, (doc_id, digest) in enumerate(zip(ids, hashes))
+        if not reuse or old_hashes.get(doc_id) != digest
+    ]
+
+    new_vectors: dict[int, list[float]] = {}
+    if need:
+        new_vectors, dim = await _embed_batches(
+            provider, [texts[index] for index in need], log, dim
+        )
+        new_vectors = {need[offset]: vec for offset, vec in new_vectors.items()}
+    elif not reuse:
+        raise SemanticError("没有可编码的文档")
+
+    n = len(ids)
+    if dim <= 0:
+        raise SemanticError("无法确定向量维度")
+
+    matrix = np.zeros((n, dim), dtype=np.float32)
+    old_pos = {doc_id: index for index, doc_id in enumerate(old_ids)} if reuse else {}
+    for index in range(n):
+        if index in new_vectors:
+            matrix[index] = new_vectors[index]
+        else:
+            matrix[index] = old_matrix[old_pos[ids[index]]]
+
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     matrix = matrix / np.clip(norms, 1e-8, None)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     meta = {
-        "count": total,
+        "count": n,
         "dim": int(matrix.shape[1]),
         "model": provider_label(provider),
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "reused": n - len(need),
+        "added": len(need),
     }
 
     # 三个文件都先写临时文件再替换，避免留下新旧混搭的半成品
@@ -175,9 +256,10 @@ async def build(
         np.save(handle, matrix.astype(np.float16))
     vector_tmp.replace(out_dir / VECTOR_NAME)
 
-    ids_tmp = out_dir / f"{IDS_NAME}.tmp"
-    ids_tmp.write_text(json.dumps(ids, ensure_ascii=False), encoding="utf-8")
-    ids_tmp.replace(out_dir / IDS_NAME)
+    docs = [{"id": doc_id, "hash": digest} for doc_id, digest in zip(ids, hashes)]
+    docs_tmp = out_dir / f"{DOCS_NAME}.tmp"
+    docs_tmp.write_text(json.dumps(docs, ensure_ascii=False), encoding="utf-8")
+    docs_tmp.replace(out_dir / DOCS_NAME)
 
     meta_tmp = out_dir / f"{META_NAME}.tmp"
     meta_tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -213,10 +295,18 @@ class SemanticIndex:
         if np is None:
             raise SemanticError("当前环境缺少 numpy")
         vector_path = out_dir / VECTOR_NAME
+        docs_path = out_dir / DOCS_NAME
         ids_path = out_dir / IDS_NAME
-        if not vector_path.is_file() or not ids_path.is_file():
+        if not vector_path.is_file():
             raise SemanticError("向量索引尚未构建，先执行 /zmd向量")
-        self.ids = json.loads(ids_path.read_text(encoding="utf-8"))
+        if docs_path.is_file():
+            docs = json.loads(docs_path.read_text(encoding="utf-8"))
+            self.ids = [str(item.get("id")) for item in docs]
+        elif ids_path.is_file():
+            # 兼容上一版只写 id 列表的索引
+            self.ids = json.loads(ids_path.read_text(encoding="utf-8"))
+        else:
+            raise SemanticError("向量索引缺少文档列表，先执行 /zmd向量")
         self.matrix = np.load(vector_path).astype(np.float32)
         if len(self.ids) != self.matrix.shape[0]:
             raise SemanticError("向量文件与 id 列表数量不一致，建议重新构建")

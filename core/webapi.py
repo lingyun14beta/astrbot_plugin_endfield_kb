@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 
-from .. import index_fetch
+from .. import index_fetch, semantic
 from ..endfield_kb import KIND_LABELS, kind_counts
 
 # 控制台「范围」筛选：界面选项 → 索引里的 kind
@@ -180,3 +180,34 @@ async def import_url(plugin: Any):
     finally:
         target.unlink(missing_ok=True)
     return json_response(result)
+
+
+def _semantic_payload(plugin: Any) -> dict[str, Any]:
+    """拼出语义检索的当前状态。"""
+    conf = plugin.retriever.semantic_conf()
+    meta = semantic.read_meta(plugin.retriever.semantic_dir())
+    return {
+        "enable": bool(conf.get("enable")),
+        "provider": str(conf.get("provider") or ""),
+        "providers": semantic.list_providers(plugin.context),
+        "index": meta,
+        "building": plugin.vector_building(),
+    }
+
+
+async def semantic_state(plugin: Any):
+    """返回语义检索开关、模型列表与向量索引状态。"""
+    return json_response(_semantic_payload(plugin))
+
+
+async def semantic_save(plugin: Any):
+    """从控制台切换语义检索开关或模型。"""
+    payload = await request.json(default={})
+    group = dict(plugin.retriever.semantic_conf())
+    if "enable" in payload:
+        group["enable"] = bool(payload["enable"])
+    if "provider" in payload:
+        group["provider"] = str(payload["provider"] or "")
+    plugin.config["semantic_group"] = group
+    plugin.save_config()
+    return json_response(_semantic_payload(plugin))

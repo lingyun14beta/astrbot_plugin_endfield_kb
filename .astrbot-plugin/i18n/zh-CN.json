@@ -1,7 +1,7 @@
 {
   "views": {
     "kb-console": {
-      "title": "知识库控制台",
+      "title": "终末地档案库",
       "description": "检索终末地本地知识库，查看命中原文与来源。",
       "heading": "终末地知识库",
       "searching": "检索中…",

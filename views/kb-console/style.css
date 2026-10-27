@@ -340,6 +340,17 @@ body {
   font-size: 11px;
 }
 
+.ark-semantic {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.5rem;
+  margin-block-start: 0.7rem;
+  padding-block-start: 0.7rem;
+  border-block-start: 1px solid var(--ark-rule);
+}
+
 .ark-examples {
   display: flex;
   flex-wrap: wrap;

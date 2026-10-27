@@ -186,8 +186,9 @@ class Retriever:
                 )
                 self._semantic_cache = None
                 text = (
-                    f"向量索引完成：{meta['count']} 篇 / {meta['dim']} 维\n"
-                    f"模型：{meta['model']}"
+                    f"向量索引完成：{meta['count']} 篇"
+                    f"（复用 {meta.get('reused', 0)}，新增 {meta.get('added', 0)}）\n"
+                    f"{meta['dim']} 维 · {meta['model']}"
                 )
             except Exception as exc:  # noqa: BLE001 - 构建失败要回告用户
                 text = f"向量构建失败：{exc}"

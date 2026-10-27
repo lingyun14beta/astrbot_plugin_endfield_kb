@@ -139,6 +139,18 @@ class EndfieldKBPlugin(Star):
             ["POST"],
             "按链接导入索引",
         )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/semantic",
+            self.page_semantic,
+            ["GET"],
+            "语义检索状态",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/semantic",
+            self.page_semantic_save,
+            ["POST"],
+            "切换语义检索",
+        )
 
     # ---------------------------------------------------------------- 初始化
 
@@ -168,6 +180,17 @@ class EndfieldKBPlugin(Star):
             return StarTools.get_data_dir(PLUGIN_NAME) / "index"
         except Exception:  # noqa: BLE001 - 非标准部署时退回插件内目录
             return default_index_dir(PLUGIN_DIR)
+
+    def save_config(self) -> None:
+        """把运行时改动的配置写回文件。"""
+        try:
+            self.config.save_config()
+        except Exception as exc:  # noqa: BLE001 - 保存失败不影响当前会话
+            logger.warning(f"[终末地KB] 配置保存失败：{exc}")
+
+    def vector_building(self) -> bool:
+        """向量构建任务是否还在跑。"""
+        return self._vector_task is not None and not self._vector_task.done()
 
     def _load_index(self) -> None:
         """扫描并校验本地索引；找不到时保持 None。"""
@@ -268,6 +291,12 @@ class EndfieldKBPlugin(Star):
 
     async def page_import_url(self):
         return await webapi.import_url(self)
+
+    async def page_semantic(self):
+        return await webapi.semantic_state(self)
+
+    async def page_semantic_save(self):
+        return await webapi.semantic_save(self)
 
     # ---------------------------------------------------------------- 指令
 

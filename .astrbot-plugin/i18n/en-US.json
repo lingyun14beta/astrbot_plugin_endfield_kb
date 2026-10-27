@@ -1,7 +1,7 @@
 {
   "views": {
     "kb-console": {
-      "title": "Knowledge Console",
+      "title": "Endfield Archive",
       "description": "Search the local Endfield knowledge base and inspect matched passages.",
       "heading": "Endfield Archive",
       "searching": "Searching…",

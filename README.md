@@ -227,15 +227,16 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 模型相关的代码单独放在 `semantic.py`，主插件只做接线。
 
 - 需要先在「模型提供商」里配一个 embedding 类型的模型
-- `/zmd向量` 把全部文档编码并落盘（管理员），完成后会回一条消息
+- **控制台里也有开关和模型下拉**：和配置页的 `semantic_group.enable` 是同一个值，改哪边都生效（配置页刷新后同步显示）
+- `/zmd向量` 构建向量（管理员），**默认增量**：内容没变的文档直接复用旧向量，只编码新增或有改动的
 - `/zmd向量状态` 看向量索引、可用模型 id 和维度
-- 向量存在索引目录的 `semantic/` 下：`semantic_vectors.npy`（float16）、`semantic_ids.json`、`semantic_meta.json`
+- 向量存在索引目录的 `semantic/` 下：`semantic_vectors.npy`（float16）、`semantic_docs.json`（id + 内容指纹）、`semantic_meta.json`
 - 1024 维模型约 33 MB；维度越高越大
-- 语料更新后要重新跑一次 `/zmd向量`
+- 换模型导致维度变化时自动全量重建；从旧版本升上来第一次因为缺内容指纹，也会全量一次
 
 | 配置 | 默认 | 说明 |
 |---|---|---|
-| `semantic_group.enable` | false | 是否启用 |
+| `semantic_group.enable` | false | 是否启用（控制台开关同源） |
 | `semantic_group.provider` | 空 | 嵌入模型 id，留空用第一个 |
 | `semantic_group.weight` | 100 | 向量那一路的融合权重，100 为等权 |
 | `semantic_group.candidates` | 30 | 向量召回条数 |
@@ -250,6 +251,8 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `/astrbot_plugin_endfield_kb/update` | POST | 下载并安装最新索引 |
 | `/astrbot_plugin_endfield_kb/upload` | POST | 接收手动上传的索引文件 |
 | `/astrbot_plugin_endfield_kb/import_url` | POST | 按链接下载并导入索引 |
+| `/astrbot_plugin_endfield_kb/semantic` | GET | 语义开关、可用嵌入模型与向量索引状态 |
+| `/astrbot_plugin_endfield_kb/semantic` | POST | 切换语义开关或嵌入模型 |
 
 ## 设计取舍
 

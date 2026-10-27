@@ -9,6 +9,9 @@ const els = {
   input: document.getElementById("q"),
   submit: document.getElementById("submit"),
   rewrite: document.getElementById("rewrite"),
+  semantic: document.getElementById("semantic"),
+  semanticProvider: document.getElementById("semantic-provider"),
+  semanticNote: document.getElementById("semantic-note"),
   scope: document.getElementById("scope"),
   limit: document.getElementById("limit"),
   list: document.getElementById("list"),
@@ -412,6 +415,50 @@ async function loadStats() {
   }
 }
 
+function semanticNote(payload) {
+  if (payload.building) return "构建中…";
+  if (!payload.index) return "未构建向量（/zmd向量）";
+  return `${formatCount(Number(payload.index.count) || 0)} 篇已建`;
+}
+
+function renderSemantic(payload) {
+  const providers = Array.isArray(payload.providers) ? payload.providers : [];
+  els.semantic.checked = Boolean(payload.enable);
+  els.semanticProvider.innerHTML = "";
+  const auto = document.createElement("option");
+  auto.value = "";
+  auto.textContent = providers.length ? "默认（第一个）" : "无可用模型";
+  els.semanticProvider.appendChild(auto);
+  providers.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    const dim = item.dim ? ` · ${item.dim}维` : "";
+    option.textContent = `${item.id}${item.model ? ` · ${item.model}` : ""}${dim}`;
+    els.semanticProvider.appendChild(option);
+  });
+  els.semanticProvider.value = payload.provider || "";
+  els.semanticProvider.disabled = providers.length === 0;
+  els.semanticNote.textContent = semanticNote(payload);
+}
+
+async function loadSemantic() {
+  try {
+    const payload = await bridge.apiGet("semantic");
+    if (payload) renderSemantic(payload);
+  } catch (error) {
+    els.semanticNote.textContent = "状态读取失败";
+  }
+}
+
+async function saveSemantic(patch) {
+  try {
+    const payload = await bridge.apiPost("semantic", patch);
+    if (payload) renderSemantic(payload);
+  } catch (error) {
+    els.semanticNote.textContent = "保存失败";
+  }
+}
+
 function markNoIndex() {
   if (!els.checkUpdate) return;
   els.checkUpdate.textContent = "下载索引";
@@ -636,6 +683,12 @@ function boot() {
   };
   els.scope?.addEventListener("change", rerunIfIdle);
   els.limit?.addEventListener("change", rerunIfIdle);
+  els.semantic?.addEventListener("change", () => {
+    saveSemantic({ enable: els.semantic.checked });
+  });
+  els.semanticProvider?.addEventListener("change", () => {
+    saveSemantic({ provider: els.semanticProvider.value });
+  });
   els.pagerPrev?.addEventListener("click", () => goToPage(-1));
   els.pagerNext?.addEventListener("click", () => goToPage(1));
 
@@ -667,6 +720,7 @@ function boot() {
   });
 
   loadStats();
+  loadSemantic();
   els.input.focus();
 }
 
