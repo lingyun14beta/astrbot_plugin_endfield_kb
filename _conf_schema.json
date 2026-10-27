@@ -90,5 +90,36 @@
         "default": []
       }
     }
+  },
+  "semantic_group": {
+    "description": "语义检索（可选）",
+    "hint": "用嵌入模型补充字面检索：查询先编码成向量，与 BM25 结果按 RRF 融合。需要先运行 /zmd向量 构建；未构建或调用失败时自动只用 BM25。",
+    "type": "object",
+    "items": {
+      "enable": {
+        "description": "启用语义检索",
+        "hint": "开启后每次检索多一次查询编码调用，延迟增加约 100–400 ms。",
+        "type": "bool",
+        "default": false
+      },
+      "provider": {
+        "description": "嵌入模型 id",
+        "hint": "留空用第一个可用的 embedding 模型；/zmd向量状态 会列出所有可选 id。",
+        "type": "string",
+        "default": ""
+      },
+      "weight": {
+        "description": "向量权重（百分比）",
+        "hint": "融合时向量那一路的相对权重，100 表示与 BM25 等权。",
+        "type": "int",
+        "default": 100
+      },
+      "candidates": {
+        "description": "向量召回条数",
+        "hint": "先取这么多向量近邻，再与 BM25 融合排序；越大越慢。",
+        "type": "int",
+        "default": 30
+      }
+    }
   }
 }

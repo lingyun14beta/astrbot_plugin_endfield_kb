@@ -313,7 +313,7 @@ function selectHit(index, scrollDetail = false) {
   const bits = [
     hit.kind_label,
     hit.collection || "未归类",
-    `BM25 ${hit.score}`,
+    hit.semantic ? "语义召回" : `BM25 ${hit.score}`,
     `${hit.chars} 字`,
   ];
   bits.forEach((text) => {

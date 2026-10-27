@@ -26,8 +26,15 @@ from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
 
-from . import index_fetch, notify
-from .endfield_kb import KIND_LABELS, SCHEMA_VERSION, kind_counts, search
+from . import index_fetch, notify, semantic
+from .endfield_kb import (
+    KIND_LABELS,
+    SCHEMA_VERSION,
+    Hit,
+    fetch_hits,
+    kind_counts,
+    search,
+)
 from .index_store import (
     decompress,
     default_index_dir,
@@ -98,7 +105,9 @@ COMMAND_HELP = (
     "  /zmd帮助        本条说明\n"
     "  /zmd订阅        当前会话加入版本推送（管理员）\n"
     "  /zmd退订        移出版本推送（管理员）\n"
-    "  /zmd推送状态    订阅列表与最近检查时间（管理员）"
+    "  /zmd推送状态    订阅列表与最近检查时间（管理员）\n"
+    "  /zmd向量        构建语义向量索引（管理员）\n"
+    "  /zmd向量状态    向量索引与可用嵌入模型（管理员）"
 )
 
 
@@ -157,6 +166,8 @@ class EndfieldKBPlugin(Star):
         self.index_source = "missing"
         self.local_release = ""
         self._notify_task: asyncio.Task | None = None
+        self._vector_task: asyncio.Task | None = None
+        self._semantic_cache: semantic.SemanticIndex | None = None
         self._load_index()
         context.register_web_api(
             f"/{PLUGIN_NAME}/stats",
@@ -262,6 +273,7 @@ class EndfieldKBPlugin(Star):
             if db
             else ""
         )
+        self._semantic_cache = None
         if db:
             current = read_current(self.index_dir) or {}
             if current.get("release_id"):
@@ -366,6 +378,9 @@ class EndfieldKBPlugin(Star):
         ratio = float(self.config.get("score_ratio", 45)) / 100
 
         hits = search(self.db_path, query, top_k=limit, score_ratio=ratio)
+        if self._semantic_enabled():
+            vector_ids = await self._semantic_ids(query)
+            hits = self._fuse_hits(hits, vector_ids, limit)
         if not hits:
             return f"没有检索到与「{query}」相关的内容。可以换更具体的专名或原文片段再试。"
 
@@ -447,6 +462,8 @@ class EndfieldKBPlugin(Star):
             if keywords:
                 used = keywords
         hits = search(self.db_path, used, top_k=limit, kinds=kinds)
+        if self._semantic_enabled():
+            hits = self._fuse_hits(hits, await self._semantic_ids(used), limit)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
 
         return json_response(
@@ -465,6 +482,7 @@ class EndfieldKBPlugin(Star):
                         "kind": hit.kind,
                         "kind_label": hit.kind_label,
                         "score": round(hit.score, 1),
+                        "semantic": hit.semantic,
                         "chars": len(hit.body),
                         "body": hit.body[:1600],
                         "refs": hit.ref_list[:60],
@@ -803,6 +821,89 @@ class EndfieldKBPlugin(Star):
 
         notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
 
+    # ------------------------------------------------------------------ 语义检索
+
+    def _semantic_conf(self) -> dict[str, Any]:
+        """读取语义检索配置。"""
+        group = self.config.get("semantic_group")
+        return group if isinstance(group, dict) else {}
+
+    def _semantic_dir(self) -> Path:
+        """向量文件目录，跟随索引目录。"""
+        return self.index_dir / "semantic"
+
+    def _semantic_enabled(self) -> bool:
+        """语义检索是否启用（还要有索引可用）。"""
+        return bool(self._semantic_conf().get("enable")) and self.db_path is not None
+
+    def _semantic_index(self) -> semantic.SemanticIndex | None:
+        """惰性加载向量索引，失败返回 None。"""
+        if self._semantic_cache is not None:
+            return self._semantic_cache
+        try:
+            self._semantic_cache = semantic.SemanticIndex(self._semantic_dir())
+        except semantic.SemanticError as exc:
+            logger.debug(f"[终末地KB] 语义索引不可用：{exc}")
+            return None
+        return self._semantic_cache
+
+    async def _semantic_ids(self, query: str) -> list[str]:
+        """向量召回；任何失败都退回空表，调用方只用 BM25。"""
+        if not self._semantic_enabled():
+            return []
+        index = self._semantic_index()
+        if index is None:
+            return []
+        conf = self._semantic_conf()
+        try:
+            provider = semantic.pick_provider(
+                self.context, str(conf.get("provider") or "")
+            )
+            vector = await semantic.encode_query(provider, query)
+            limit = max(1, min(int(conf.get("candidates", 30) or 30), 100))
+            return index.search(vector, limit)
+        except Exception as exc:  # noqa: BLE001 - 语义只是增强，失败不影响检索
+            logger.warning(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
+            return []
+
+    def _fuse_hits(
+        self, hits: list[Hit], vector_ids: list[str], limit: int
+    ) -> list[Hit]:
+        """把 BM25 结果与向量结果按 RRF 融合。"""
+        if not vector_ids:
+            return hits
+        conf = self._semantic_conf()
+        weight = max(0, min(int(conf.get("weight", 100) or 100), 100)) / 100
+        fused = semantic.fuse([hit.doc_id for hit in hits], vector_ids, weight=weight)
+        known = {hit.doc_id: hit for hit in hits}
+        missing = [doc_id for doc_id in fused[:limit] if doc_id not in known]
+        if missing and self.db_path is not None:
+            known.update(fetch_hits(self.db_path, missing))
+        ordered = [known[doc_id] for doc_id in fused[:limit] if doc_id in known]
+        return ordered or hits
+
+    async def _build_vectors(self, provider: Any, umo: str) -> None:
+        """后台构建向量索引，完成后给发起者发一条消息。"""
+        try:
+            meta = await semantic.build(
+                self.db_path,
+                self._semantic_dir(),
+                provider,
+                log=lambda text: logger.info(f"[终末地KB] {text}"),
+            )
+            self._semantic_cache = None
+            text = (
+                f"向量索引完成：{meta['count']} 篇 / {meta['dim']} 维\n"
+                f"模型：{meta['model']}"
+            )
+        except Exception as exc:  # noqa: BLE001 - 构建失败要回告用户
+            text = f"向量构建失败：{exc}"
+            logger.error(f"[终末地KB] {text}")
+        try:
+            await self.context.send_message(umo, MessageChain([Plain(text=text)]))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[终末地KB] 向量结果通知发送失败：{exc}")
+
     # ------------------------------------------------------------------ 指令
 
     def _status_text(self) -> str:
@@ -936,4 +1037,62 @@ class EndfieldKBPlugin(Star):
             f"已记录：正式 {state.get('main') or '-'} / 预下载 {state.get('pre') or '-'}"
         )
         lines.append(f"最近检查：{state.get('checked_at') or '-'}")
+        yield event.plain_result("\n".join(lines))
+
+    @filter.command("zmd向量", desc="用嵌入模型构建语义索引（仅管理员）")
+    async def zmd_vectors(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能构建向量索引。")
+            return
+        if self.db_path is None:
+            yield event.plain_result("索引还没就绪，先安装或构建索引。")
+            return
+        if self._vector_task is not None and not self._vector_task.done():
+            yield event.plain_result("已经在构建中，完成后会通知。")
+            return
+        try:
+            provider = semantic.pick_provider(
+                self.context, str(self._semantic_conf().get("provider") or "")
+            )
+        except semantic.SemanticError as exc:
+            yield event.plain_result(str(exc))
+            return
+        self._vector_task = asyncio.create_task(
+            self._build_vectors(provider, event.unified_msg_origin)
+        )
+        yield event.plain_result(
+            f"开始构建向量：{semantic.provider_label(provider)}\n"
+            "需要把全部文档送进模型，可能要几分钟，完成后在这里通知。"
+        )
+
+    @filter.command("zmd向量状态", desc="查看语义索引与可用的嵌入模型（仅管理员）")
+    async def zmd_vector_status(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能查看向量状态。")
+            return
+        conf = self._semantic_conf()
+        meta = semantic.read_meta(self._semantic_dir())
+        providers = semantic.list_providers(self.context)
+        lines = [
+            "语义检索",
+            f"开关：{'开' if conf.get('enable') else '关'}",
+            f"模型：{conf.get('provider') or '（第一个可用）'}",
+            f"融合权重：{conf.get('weight', 100)}%",
+            f"召回条数：{conf.get('candidates', 30)}",
+        ]
+        if meta:
+            lines.append(
+                f"向量索引：{meta.get('count')} 篇 / {meta.get('dim')} 维 / {meta.get('model')}"
+            )
+            lines.append(f"构建时间：{meta.get('built_at')}")
+        else:
+            lines.append("向量索引：未构建（/zmd向量 开始构建）")
+        if providers:
+            lines.append("可用嵌入模型：")
+            lines.extend(
+                f"  {item['id']}（{item['model'] or '未知模型'}，{item['dim']} 维）"
+                for item in providers
+            )
+        else:
+            lines.append("可用嵌入模型：无（请先在模型提供商添加 embedding）")
         yield event.plain_result("\n".join(lines))

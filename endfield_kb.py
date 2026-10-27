@@ -117,6 +117,7 @@ class Hit:
     score: float
     tokens: str = ""
     refs: str = ""
+    semantic: bool = False
 
     @property
     def kind_label(self) -> str:
@@ -529,6 +530,37 @@ def search(
     cutoff = best * score_ratio
     kept = [h for h in hits if h.score <= cutoff] or hits[:1]
     return kept[:top_k]
+
+
+def fetch_hits(db_path: Path, doc_ids: list[str]) -> dict[str, Hit]:
+    """按 doc_id 批量取回文档。
+
+    Args:
+        db_path: 索引文件路径。
+        doc_ids: 需要的 doc_id 列表。
+
+    Returns:
+        doc_id 到 Hit 的映射；库里没有的 id 会被跳过。
+    """
+    unique = [doc_id for doc_id in dict.fromkeys(doc_ids) if doc_id]
+    if not unique:
+        return {}
+    placeholders = ",".join("?" * len(unique))
+    con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        rows = con.execute(
+            "SELECT doc_id, title, coll, kind, body, refs FROM docs"
+            f" WHERE doc_id IN ({placeholders})",
+            unique,
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        con.close()
+    return {
+        doc_id: Hit(doc_id, title, coll, kind, body, 0.0, "", refs, True)
+        for doc_id, title, coll, kind, body, refs in rows
+    }
 
 
 def search_text(db_path: Path, query: str, top_k: int = 5) -> str:

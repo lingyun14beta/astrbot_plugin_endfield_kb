@@ -138,6 +138,8 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `/zmd订阅` | 当前会话加入版本推送（管理员） |
 | `/zmd退订` | 移出版本推送（管理员） |
 | `/zmd推送状态` | 订阅列表、已记录版本与最近检查时间（管理员） |
+| `/zmd向量` | 构建语义向量索引（管理员） |
+| `/zmd向量状态` | 向量索引与可用嵌入模型（管理员） |
 
 旧的 `/zmd 重载`、`/zmd 帮助` 这类写法会提示改用的新指令，不再当作检索词。
 
@@ -217,6 +219,26 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 【终末地】预下载已关闭
 正式版本 1.7.0 即将上线。
 ```
+
+## 语义检索（可选）
+
+默认关闭。开启后每次检索会多一步：把查询编码成向量，与 BM25 的结果按 RRF 融合。**任何环节失败都会静默退回纯 BM25**——没配模型、没建向量、维度不符、调用超时，都只是少一层增强，不会让检索报错。
+
+模型相关的代码单独放在 `semantic.py`，主插件只做接线。
+
+- 需要先在「模型提供商」里配一个 embedding 类型的模型
+- `/zmd向量` 把全部文档编码并落盘（管理员），完成后会回一条消息
+- `/zmd向量状态` 看向量索引、可用模型 id 和维度
+- 向量存在索引目录的 `semantic/` 下：`semantic_vectors.npy`（float16）、`semantic_ids.json`、`semantic_meta.json`
+- 1024 维模型约 33 MB；维度越高越大
+- 语料更新后要重新跑一次 `/zmd向量`
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `semantic_group.enable` | false | 是否启用 |
+| `semantic_group.provider` | 空 | 嵌入模型 id，留空用第一个 |
+| `semantic_group.weight` | 100 | 向量那一路的融合权重，100 为等权 |
+| `semantic_group.candidates` | 30 | 向量召回条数 |
 
 ## 后端接口
 
