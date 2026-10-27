@@ -259,6 +259,23 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 - **原文优先**：整理资料标注 `[整理]`，只能当线索，引用以 `[原文]` 为准。
 - **schema 版本**：索引写入 `schema_version`，插件不匹配时拒绝加载，避免半旧半新。
 
+## 代码结构
+
+```
+main.py              插件类、指令、Web 接口注册（只做接线）
+core/
+  updater.py         索引安装、清单比对、下载与校验
+  retrieval.py       关键词改写、BM25 + 语义融合、格式化
+  pusher.py          版本推送的订阅、定时检查、发送
+  webapi.py          控制台后端接口
+  versioning.py      版本号、下载源、旧配置修复
+endfield_kb.py       索引结构、清洗、FTS5 检索
+index_store.py       索引文件校验、安装与目录管理
+index_fetch.py       清单与下载的 HTTP 封装
+notify.py            版本查询与推送文案
+semantic.py          嵌入模型、向量存储、RRF 融合
+```
+
 ## 已知限制
 
 - 只覆盖中文；多语言语料未接入

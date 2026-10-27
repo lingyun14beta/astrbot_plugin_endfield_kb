@@ -1,99 +1,36 @@
 """终末地中文知识库插件。
 
 把本地 FTS5 索引（官方剧情原文 + 档案 + 整理 Wiki）注册为一个 LLM 工具，
-模型在需要时主动调用；查询前可选地用对话模型把自然语言压成检索关键词。
+模型在需要时主动调用；检索编排、更新、推送、语义这些细节放在 core/ 下。
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
-import shutil
-import time
 from dataclasses import field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from pydantic.dataclasses import dataclass
 
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, MessageChain, filter
-from astrbot.api.message_components import Plain
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
-from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
 
-from . import index_fetch, notify, semantic
-from .endfield_kb import (
-    KIND_LABELS,
-    SCHEMA_VERSION,
-    Hit,
-    fetch_hits,
-    kind_counts,
-    search,
-)
-from .index_store import (
-    decompress,
-    default_index_dir,
-    install,
-    read_current,
-    resolve,
-    validate_db,
-)
+from . import semantic
+from .core import versioning, webapi
+from .core.pusher import Pusher
+from .core.retrieval import Retriever
+from .core.updater import Updater
+from .endfield_kb import SCHEMA_VERSION
+from .index_store import default_index_dir, read_current, resolve
 
 PLUGIN_NAME = "astrbot_plugin_endfield_kb"
 PLUGIN_DIR = Path(__file__).parent
-
-GH_BASE = "https://github.com/lingyun14beta/astrbot-endfield-kb-index"
-MS_BASE = "https://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index"
-DEFAULT_MANIFEST_URLS = (
-    f"{GH_BASE}/releases/latest/download/manifest.json\n"
-    f"{MS_BASE}/repo?Revision=master&FilePath=manifest.json"
-)
-DEFAULT_INDEX_URLS = (
-    f"{GH_BASE}/releases/latest/download/endfield_kb-latest.sqlite3.zip\n"
-    f"{MS_BASE}/repo?Revision=master&FilePath=endfield_kb-latest.sqlite3.zip"
-)
-
-# 推送失败最多重试的轮数；超过就把版本记下，不再重复尝试
-MAX_PUSH_RETRY = 3
-
-# 控制台「范围」筛选：界面选项 → 索引里的 kind
-SCOPE_KINDS: dict[str, tuple[str, ...]] = {
-    "story": ("original_story",),
-    "archive": ("archive",),
-    "wiki": (
-        "knowledge",
-        "story_wiki",
-        "character_wiki",
-        "character_activity_wiki",
-        "reference",
-    ),
-    "character": ("character_profile", "character_voice"),
-}
-
-REWRITE_SYSTEM = "你是检索词提取器。只输出关键词，不要解释、不要编号。"
-
-# 从当前语料里统计出的高频设定词；只做提示，不改写用户本意
-REWRITE_GLOSSARY = (
-    "地点：武陵、谷地、帝江号、小禾庄、源石发电站、围陋村、心脏修缮站\n"
-    "势力：终末地工业、工团、天师、裂地者、天使\n"
-    "概念：协议源石、源石技术、传送网络、侵蚀、巨兽心脏"
-)
-
-REWRITE_PROMPT = (
-    "用户想找《明日方舟：终末地》里的一段剧情或设定，但他只记得大意。\n"
-    "请把下面的描述改写成 5 到 10 个适合全文检索的中文关键词，"
-    "优先使用游戏里可能出现的专名、地名和书面词，不要输出原句。\n\n"
-    "可以参考下面的常见词，但只在描述确实涉及时才用，最多挑 2 个：\n"
-    "{glossary}\n\n"
-    "描述里已经出现的专名要原样保留，不要换成同义词。\n\n"
-    "描述：{query}\n\n"
-    "只输出一行关键词，用空格分隔。"
-)
 
 COMMAND_HELP = (
     "终末地知识库 · 指令\n"
@@ -113,26 +50,22 @@ COMMAND_HELP = (
 
 @dataclass
 class EndfieldSearchTool(FunctionTool[AstrAgentContext]):
-    """供 Agent 调用的终末地本地知识库检索工具。"""
-
-    __pydantic_config__ = {"arbitrary_types_allowed": True}
+    """给模型调用的检索工具。"""
 
     plugin: Any = None
     name: str = "endfield_kb_search"
     description: str = (
-        "检索本地的《明日方舟：终末地》中文知识库，覆盖官方剧情原文（对话、无线电、"
-        "环境语音、黑屏旁白）、中枢档案、角色档案与整理 Wiki。"
-        "当用户问到终末地的剧情片段、人物关系、地点、事件、台词出处或世界观设定，"
-        "而你不确定具体内容时调用。query 传简明的检索词或一句描述，不要整段复制用户消息；"
-        "需要更多结果时可调大 top_k。"
+        "检索《明日方舟：终末地》的本地知识库，覆盖剧情原文、档案、"
+        "角色资料与整理 Wiki。query 可以直接贴原文片段，也可以是关键词。"
+        "返回带 [原文]/[整理] 标注的片段与出处。"
     )
-    parameters: dict[str, Any] = field(
+    parameters: dict = field(
         default_factory=lambda: {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "检索词或一句简短描述，例如“小禾庄 祈愿树”或“管理员和祀的关系”。",
+                    "description": "检索词或原文片段；口语描述也可以",
                 },
                 "top_k": {
                     "type": "integer",
@@ -165,9 +98,10 @@ class EndfieldKBPlugin(Star):
         self.meta: dict[str, str] = {}
         self.index_source = "missing"
         self.local_release = ""
-        self._notify_task: asyncio.Task | None = None
+        self.updater = Updater(self)
+        self.retriever = Retriever(self)
+        self.pusher = Pusher(self)
         self._vector_task: asyncio.Task | None = None
-        self._semantic_cache: semantic.SemanticIndex | None = None
         self._load_index()
         context.register_web_api(
             f"/{PLUGIN_NAME}/stats",
@@ -206,36 +140,13 @@ class EndfieldKBPlugin(Star):
             "按链接导入索引",
         )
 
-    @staticmethod
-    def _repair_url_value(value: object) -> list[str] | None:
-        """把字符串或被拆成单字符的列表还原成地址列表。
-
-        Args:
-            value: 配置里读到的原值。
-
-        Returns:
-            修好后的地址列表；本来就正常时返回 None，表示无需改动。
-        """
-        if isinstance(value, str):
-            return index_fetch.parse_urls(value)
-        if (
-            isinstance(value, list)
-            and len(value) > 8
-            and all(isinstance(item, str) and len(item) == 1 for item in value)
-            and "://" in "".join(str(item) for item in value)
-        ):
-            return index_fetch.parse_urls("".join(str(item) for item in value))
-        return None
+    # ---------------------------------------------------------------- 初始化
 
     def _normalize_sources(self) -> None:
-        """把旧版的字符串地址迁移成列表并落盘。
-
-        旧 schema 用 text 存多行地址；改成 list 后，残留的字符串会被列表
-        编辑器按字符拆开，所以在加载时统一修一次。
-        """
+        """把旧版的字符串地址迁移成列表并落盘。"""
         changed = False
         for key in ("manifest_urls", "index_urls"):
-            repaired = self._repair_url_value(self.config.get(key))
+            repaired = versioning.repair_url_value(self.config.get(key))
             if repaired is not None:
                 self.config[key] = repaired
                 changed = True
@@ -269,15 +180,16 @@ class EndfieldKBPlugin(Star):
         self.meta = meta
         self.index_source = source
         self.local_release = (
-            self._version_key(meta.get("index_version") or meta.get("release", ""))
+            versioning.version_key(meta.get("index_version") or meta.get("release", ""))
             if db
             else ""
         )
-        self._semantic_cache = None
         if db:
             current = read_current(self.index_dir) or {}
             if current.get("release_id"):
-                self.local_release = self._version_key(str(current["release_id"]))
+                self.local_release = versioning.version_key(str(current["release_id"]))
+        if hasattr(self, "retriever"):
+            self.retriever.invalidate()
         if db:
             logger.info(
                 f"[终末地KB] 索引就绪：{meta.get('documents')} 篇 / "
@@ -294,65 +206,22 @@ class EndfieldKBPlugin(Star):
         if not self.db_path:
             logger.warning("[终末地KB] 索引缺失，工具已注册但会返回提示信息")
         self.context.add_llm_tools(EndfieldSearchTool(plugin=self))
-        self._notify_task = asyncio.create_task(self._notify_loop())
+        self.pusher.start()
         logger.info("[终末地KB] 已注册工具 endfield_kb_search")
 
     async def terminate(self) -> None:
-        """插件卸载/重载时停掉后台检查。"""
-        if self._notify_task is None:
-            return
-        self._notify_task.cancel()
-        try:
-            await self._notify_task
-        except asyncio.CancelledError:
-            pass
-        finally:
-            self._notify_task = None
-
-    # ------------------------------------------------------------------ 检索
-
-    async def _keywords(self, query: str, umo: str) -> str:
-        """用对话模型把描述压成检索关键词。
-
-        只在调用方明确要求时执行（控制台勾选、或显式调用），不做长度判断：
-        勾了就一定会问模型，没勾就一次都不问。
-
-        Args:
-            query: 用户的原始描述。
-            umo: 会话来源，用于选择该会话偏好的模型。
-
-        Returns:
-            空格分隔的关键词；失败时返回空串。
-        """
-        provider = None
-        provider_id = str(self.config.get("rewrite_provider") or "").strip()
-        if provider_id:
-            provider = self.context.get_provider_by_id(provider_id)
-        if provider is None:
+        """插件卸载/重载时停掉后台任务。"""
+        await self.pusher.stop()
+        if self._vector_task is not None:
+            self._vector_task.cancel()
             try:
-                provider = await self.context.get_using_provider_async(umo)
-            except Exception as exc:  # noqa: BLE001 - 取模型失败不应阻断检索
-                logger.debug(f"[终末地KB] 获取模型失败：{exc}")
-                return ""
-        if provider is None:
-            return ""
-        try:
-            response = await asyncio.wait_for(
-                provider.text_chat(
-                    prompt=REWRITE_PROMPT.format(
-                        glossary=REWRITE_GLOSSARY, query=query
-                    ),
-                    system_prompt=REWRITE_SYSTEM,
-                    contexts=[],
-                ),
-                timeout=float(self.config.get("rewrite_timeout", 12)),
-            )
-        except Exception as exc:  # noqa: BLE001 - 超时或接口错误都退回原文查询
-            logger.debug(f"[终末地KB] 关键词改写失败：{exc}")
-            return ""
-        text = (getattr(response, "completion_text", "") or "").strip()
-        tokens = [t for t in re.split(r"[\s,，、;；|]+", text) if t]
-        return " ".join(tokens[:10])
+                await self._vector_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._vector_task = None
+
+    # ---------------------------------------------------------------- 检索
 
     async def search_text(self, query: str, top_k: int | None = None) -> str:
         """执行一次检索并返回给模型阅读的文本。
@@ -375,536 +244,46 @@ class EndfieldKBPlugin(Star):
 
         limit = int(top_k or self.config.get("top_k", 5))
         limit = max(1, min(limit, 10))
-        ratio = float(self.config.get("score_ratio", 45)) / 100
-
-        hits = search(self.db_path, query, top_k=limit, score_ratio=ratio)
-        if self._semantic_enabled():
-            vector_ids = await self._semantic_ids(query)
-            hits = self._fuse_hits(hits, vector_ids, limit)
+        hits = await self.retriever.query(query, top_k=limit)
         if not hits:
             return f"没有检索到与「{query}」相关的内容。可以换更具体的专名或原文片段再试。"
+        return self.retriever.format_for_llm(hits, query)
 
-        return self._format(hits, query)
-
-    def _format(self, hits, query: str) -> str:
-        max_chars = int(self.config.get("max_chars", 1800))
-        lines = [f"检索「{query}」命中 {len(hits)} 条（本地 PRTS 终末地语料）："]
-        used = 0
-        for index, hit in enumerate(hits, 1):
-            head = f"\n[{index}] [{hit.kind_label}]《{hit.title}》"
-            if hit.coll:
-                head += f" · {hit.coll}"
-            refs = hit.ref_list
-            tail = ""
-            if refs:
-                shown = "、".join(refs[:6])
-                more = f" 等 {len(refs)} 处" if len(refs) > 6 else ""
-                tail = f"\n出处：{shown}{more}"
-            remain = max_chars - used - len(head) - len(tail)
-            if remain <= 80:
-                break
-            body = hit.body.strip()
-            if len(body) > remain:
-                body = body[:remain] + "…"
-            lines.append(head + "\n" + body + tail)
-            used += len(head) + len(body) + len(tail)
-        lines.append(
-            "\n（标注为“整理”的是 PRTS 二次整理资料，当作线索；"
-            "引用台词或具体情节请以“原文”条目为准。）"
-        )
-        return "\n".join(lines)
-
-    # ------------------------------------------------------------------ 页面接口
+    # ---------------------------------------------------------------- 页面接口
 
     async def page_stats(self):
-        """返回索引统计，供插件视图顶部的状态条使用。"""
-        if not self.db_path:
-            return error_response("索引尚未构建", status_code=503)
-        counts = kind_counts(self.db_path)
-        return json_response(
-            {
-                "documents": int(self.meta.get("documents", 0)),
-                "characters": int(self.meta.get("characters", 0)),
-                "refs": int(self.meta.get("refs", 0)),
-                "size_mb": round(self.db_path.stat().st_size / 1e6, 1),
-                "built_at": self.meta.get("built_at", ""),
-                "release": self.meta.get("release", ""),
-                "index_version": self.meta.get("index_version", ""),
-                "kinds": [
-                    {
-                        "kind": kind,
-                        "label": KIND_LABELS.get(kind, "资料"),
-                        "count": count,
-                    }
-                    for kind, count in counts.items()
-                ],
-            }
-        )
+        return await webapi.stats(self)
 
     async def page_search(self):
-        """供插件视图调用的检索接口。"""
-        query = (request.query.get("q") or "").strip()
-        if not query:
-            return error_response("缺少查询词 q", status_code=400)
-        if not self.db_path:
-            return error_response("索引尚未构建", status_code=503)
+        return await webapi.search(self)
 
-        limit = request.query.get("k", 8, type=int) or 8
-        limit = max(1, min(limit, 50))
-        scope = (request.query.get("scope") or "").strip()
-        kinds = SCOPE_KINDS.get(scope)
-        rewrite = str(request.query.get("rewrite", "0")).lower() in {"1", "true", "yes"}
+    async def page_updates(self):
+        return await webapi.updates(self)
 
-        started = time.perf_counter()
-        used = query
-        if rewrite:
-            keywords = await self._keywords(query, "")
-            if keywords:
-                used = keywords
-        hits = search(self.db_path, used, top_k=limit, kinds=kinds)
-        if self._semantic_enabled():
-            hits = self._fuse_hits(hits, await self._semantic_ids(used), limit)
-        elapsed_ms = round((time.perf_counter() - started) * 1000)
+    async def page_update(self):
+        return await webapi.update(self)
 
-        return json_response(
-            {
-                "query": query,
-                "used_query": used,
-                "rewritten": used != query,
-                "scope": scope,
-                "elapsed_ms": elapsed_ms,
-                "count": len(hits),
-                "hits": [
-                    {
-                        "doc_id": hit.doc_id,
-                        "title": hit.title,
-                        "collection": hit.coll,
-                        "kind": hit.kind,
-                        "kind_label": hit.kind_label,
-                        "score": round(hit.score, 1),
-                        "semantic": hit.semantic,
-                        "chars": len(hit.body),
-                        "body": hit.body[:1600],
-                        "refs": hit.ref_list[:60],
-                    }
-                    for hit in hits
-                ],
-            }
-        )
+    async def page_upload(self):
+        return await webapi.upload(self)
 
-    # ------------------------------------------------------------------ 更新
+    async def page_import_url(self):
+        return await webapi.import_url(self)
 
-    @staticmethod
-    def _version_key(value: str) -> str:
-        """版本比较用：保留 semver 后缀，例如 1.6.3-beta、1.6.3-r1。"""
-        match = re.search(r"(\d+\.\d+\.\d+)(-[0-9A-Za-z.]+)?", value or "")
-        if not match:
-            return (value or "").strip().lower()
-        return f"{match.group(1)}{(match.group(2) or '')}".lower()
-
-    def _custom_urls(self, key: str) -> list[str]:
-        """自定义源开关打开时返回用户填的地址，否则返回空表。
-
-        Args:
-            key: 配置项名（manifest_urls 或 index_urls）。
-
-        Returns:
-            地址列表；开关关闭或列表为空时为空表，调用方据此回退内置地址。
-        """
-        if not self.config.get("custom_sources"):
-            return []
-        return index_fetch.parse_urls(self.config.get(key))
-
-    def _manifest_urls(self) -> list[str]:
-        return self._custom_urls("manifest_urls") or index_fetch.parse_urls(
-            DEFAULT_MANIFEST_URLS
-        )
-
-    def _zip_urls(self) -> list[str]:
-        return self._custom_urls("index_urls") or index_fetch.parse_urls(
-            DEFAULT_INDEX_URLS
-        )
+    # ---------------------------------------------------------------- 更新
 
     def install_from_file(self, path: Path, release_hint: str = "") -> dict[str, Any]:
-        """校验并安装一个本地索引文件（zip/gz/sqlite3）。
-
-        Args:
-            path: 待安装文件。
-            release_hint: 清单里的版本标识，优先于库内 meta。
-
-        Returns:
-            安装结果，含文件名、篇数、版本。
-
-        Raises:
-            IndexValidationError: 文件损坏或版本不兼容。
-        """
-        work = self.index_dir / ".import"
-        shutil.rmtree(work, ignore_errors=True)
-        work.mkdir(parents=True, exist_ok=True)
-        try:
-            suffix = path.suffix.lower()
-            if suffix in {".zip", ".gz"}:
-                db = decompress(path, work)
-            else:
-                db = path
-            meta = validate_db(db, expected_schema=SCHEMA_VERSION)
-            hint = release_hint or str(
-                meta.get("index_version") or meta.get("release") or ""
-            )
-            key = self._version_key(hint)
-            label = (
-                f"endfield-{key}"
-                if re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", key or "")
-                else "manual"
-            )
-            installed = install(
-                db, self.index_dir, label, SCHEMA_VERSION, move_source=True
-            )
-            self._load_index()
-            return {
-                "ok": True,
-                "file": installed.name,
-                "release": key or label,
-                "documents": meta.get("_documents") or meta.get("documents"),
-            }
-        finally:
-            shutil.rmtree(work, ignore_errors=True)
+        """校验并安装一个本地索引文件。"""
+        return self.updater.install_from_file(path, release_hint)
 
     async def check_update(self) -> dict[str, Any]:
-        """比较本地与远端版本，不下载。"""
-        manifest, source = await index_fetch.fetch_manifest(self._manifest_urls())
-        current = self.local_release or self._version_key(
-            self.meta.get("index_version") or self.meta.get("release", "")
-        )
-        if not manifest:
-            return {
-                "ok": True,
-                "remote": None,
-                "current": current,
-                "up_to_date": True,
-                "message": "无法获取更新清单（网络或镜像不可达）",
-            }
-        remote_release = str(manifest.get("release_id") or "")
-        remote_key = self._version_key(remote_release)
-        return {
-            "ok": True,
-            "current": current,
-            "remote": {
-                "release": remote_key,
-                "documents": manifest.get("documents"),
-                "size": manifest.get("size"),
-                "built_at": manifest.get("built_at"),
-            },
-            "up_to_date": bool(current) and remote_key == current,
-            "source": source,
-        }
+        """比较本地与远端版本。"""
+        return await self.updater.check_update()
 
     async def apply_update(self) -> dict[str, Any]:
         """下载并安装最新索引。"""
-        manifest, _ = await index_fetch.fetch_manifest(self._manifest_urls())
-        urls = index_fetch.parse_urls(manifest.get("urls")) if manifest else []
-        sha = str(manifest.get("sha256") or "") if manifest else ""
-        if not urls:
-            urls = self._zip_urls()
-        if not urls:
-            return {"ok": False, "message": "没有配置下载地址"}
+        return await self.updater.apply_update()
 
-        data = await index_fetch.download(urls, sha)
-        target = self.index_dir / ".download.zip"
-        target.write_bytes(data)
-        try:
-            hint = str(manifest.get("release_id") or "") if manifest else ""
-            result = await asyncio.to_thread(self.install_from_file, target, hint)
-        finally:
-            target.unlink(missing_ok=True)
-        return result
-
-    async def page_updates(self):
-        """供页面调用的更新检查。"""
-        try:
-            return json_response(await self.check_update())
-        except Exception as exc:  # noqa: BLE001 - 统一转成错误响应
-            return json_response({"ok": False, "message": str(exc)})
-
-    async def page_update(self):
-        """供页面调用的更新安装。"""
-        try:
-            return json_response(await self.apply_update())
-        except Exception as exc:  # noqa: BLE001
-            return error_response(str(exc), status_code=500)
-
-    async def page_upload(self):
-        """接收页面手动上传的索引文件。"""
-        files = await request.files()
-        upload = files.get("file")
-        if not isinstance(upload, PluginUploadFile):
-            return error_response("缺少文件", status_code=400)
-        suffix = Path(upload.filename or "index.zip").suffix.lower()
-        if suffix not in {".zip", ".gz", ".sqlite3"}:
-            return error_response("只支持 .zip / .gz / .sqlite3", status_code=400)
-
-        target = self.index_dir / f".upload{suffix}"
-        try:
-            await upload.save(target)
-            result = await asyncio.to_thread(self.install_from_file, target)
-        except Exception as exc:  # noqa: BLE001
-            return error_response(str(exc), status_code=400)
-        finally:
-            target.unlink(missing_ok=True)
-        return json_response(result)
-
-    @staticmethod
-    def _guess_suffix(url: str, data: bytes) -> str:
-        """按 URL 后缀或文件头判断格式。"""
-        suffix = Path(urlparse(url).path).suffix.lower()
-        if suffix in {".zip", ".gz", ".sqlite3"}:
-            return suffix
-        if data[:4] == b"PK\x03\x04":
-            return ".zip"
-        if data[:2] == b"\x1f\x8b":
-            return ".gz"
-        if data[:16].startswith(b"SQLite format 3"):
-            return ".sqlite3"
-        raise ValueError("无法识别文件格式，仅支持 .zip / .gz / .sqlite3")
-
-    async def page_import_url(self):
-        """按用户提供的链接下载并导入索引。"""
-        payload = await request.json(default={})
-        url = str(payload.get("url") or "").strip()
-        if not url.lower().startswith(("http://", "https://")):
-            return error_response("只支持 http/https 链接", status_code=400)
-        try:
-            data = await index_fetch.fetch(url, timeout=120)
-        except Exception as exc:  # noqa: BLE001
-            return error_response(f"下载失败：{exc}", status_code=400)
-
-        try:
-            suffix = self._guess_suffix(url, data)
-        except ValueError as exc:
-            return error_response(str(exc), status_code=400)
-
-        target = self.index_dir / f".import{suffix}"
-        target.write_bytes(data)
-        try:
-            result = await asyncio.to_thread(self.install_from_file, target)
-        except Exception as exc:  # noqa: BLE001
-            return error_response(str(exc), status_code=400)
-        finally:
-            target.unlink(missing_ok=True)
-        return json_response(result)
-
-    # ------------------------------------------------------------------ 版本推送
-
-    def _notify_state_path(self) -> Path:
-        """通知状态的落盘位置，与索引目录同级。"""
-        return self.index_dir.parent / notify.STATE_NAME
-
-    def _notify_conf(self) -> dict[str, Any]:
-        """读取版本推送配置；兼容早期写在顶层的几个键。"""
-        group = self.config.get("notify_group")
-        if isinstance(group, dict) and group:
-            return group
-        legacy: dict[str, Any] = {}
-        for new_key, old_key in (
-            ("enable", "notify_enable"),
-            ("interval", "notify_interval"),
-            ("pre_download", "notify_pre_download"),
-            ("umos", "notify_umos"),
-        ):
-            if old_key in self.config:
-                legacy[new_key] = self.config.get(old_key)
-        return legacy
-
-    def _notify_umos(self) -> list[str]:
-        """读取推送目标，过滤掉空值和异常类型。"""
-        raw = self._notify_conf().get("umos") or []
-        if not isinstance(raw, list):
-            return []
-        return [str(item).strip() for item in raw if str(item).strip()]
-
-    def _set_notify_umos(self, umos: list[str]) -> None:
-        """把订阅列表写回配置并落盘。"""
-        group = dict(self._notify_conf())
-        group["umos"] = umos
-        self.config["notify_group"] = group
-        self._save_config()
-
-    def _save_config(self) -> None:
-        """把运行时改动的配置写回文件。"""
-        try:
-            self.config.save_config()
-        except Exception as exc:  # noqa: BLE001 - 保存失败不影响当前会话
-            logger.warning(f"[终末地KB] 配置保存失败：{exc}")
-
-    async def _notify_loop(self) -> None:
-        """按间隔检查版本；异常只记日志，不退出循环。"""
-        while True:
-            try:
-                await self._check_version_notice()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"[终末地KB] 版本检查失败：{exc}")
-            interval = max(5, int(self._notify_conf().get("interval", 60) or 60))
-            await asyncio.sleep(interval * 60)
-
-    async def _check_version_notice(self) -> None:
-        """查一次版本，有变化就推送到已订阅的会话。"""
-        if not self._notify_conf().get("enable", True):
-            return
-        path = self._notify_state_path()
-        state = notify.load_state(path)
-        stored = str(state.get("main") or "")
-        status = await asyncio.to_thread(notify.fetch_status, stored)
-        main = status["main"]
-        pre = status["pre"]
-        stamp = time.strftime("%Y-%m-%d %H:%M")
-
-        if not stored:
-            notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
-            logger.info(f"[终末地KB] 首次记录版本 {main}，静默写入不发通知")
-            return
-
-        messages: list[str] = []
-        if notify.is_newer(main, stored):
-            messages.append(
-                notify.render(
-                    "main", main, stored, status["total"], status["incremental"]
-                )
-            )
-        if self._notify_conf().get("pre_download", True):
-            old_pre = str(state.get("pre") or "")
-            if pre and pre != old_pre:
-                messages.append(
-                    notify.render(
-                        "pre", pre, old_pre, status["total"], status["pre_incremental"]
-                    )
-                )
-            elif not pre and old_pre:
-                messages.append(notify.render("pre-remove", "", old_pre, 0, 0))
-
-        umos = self._notify_umos()
-        if messages and umos:
-            sent = 0
-            for umo in umos:
-                for text in messages:
-                    try:
-                        if await self.context.send_message(
-                            umo, MessageChain([Plain(text=text)])
-                        ):
-                            sent += 1
-                    except Exception as exc:  # noqa: BLE001 - 单个会话失败不影响其他
-                        logger.warning(f"[终末地KB] 推送到 {umo} 失败：{exc}")
-            if sent:
-                logger.info(f"[终末地KB] 版本通知已发送 {sent} 条")
-            else:
-                attempts = int(state.get("retry") or 0) + 1
-                if attempts < MAX_PUSH_RETRY:
-                    notify.save_state(
-                        path,
-                        {
-                            "main": stored,
-                            "pre": str(state.get("pre") or ""),
-                            "checked_at": stamp,
-                            "retry": str(attempts),
-                        },
-                    )
-                    logger.warning(
-                        f"[终末地KB] 版本通知全部失败（第 {attempts}/{MAX_PUSH_RETRY} 次），"
-                        "保留旧状态下轮重试"
-                    )
-                    return
-                logger.error(
-                    f"[终末地KB] 版本通知连续 {MAX_PUSH_RETRY} 次失败，放弃本轮，"
-                    f"版本记为 {main}"
-                )
-
-        notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
-
-    # ------------------------------------------------------------------ 语义检索
-
-    def _semantic_conf(self) -> dict[str, Any]:
-        """读取语义检索配置。"""
-        group = self.config.get("semantic_group")
-        return group if isinstance(group, dict) else {}
-
-    def _semantic_dir(self) -> Path:
-        """向量文件目录，跟随索引目录。"""
-        return self.index_dir / "semantic"
-
-    def _semantic_enabled(self) -> bool:
-        """语义检索是否启用（还要有索引可用）。"""
-        return bool(self._semantic_conf().get("enable")) and self.db_path is not None
-
-    def _semantic_index(self) -> semantic.SemanticIndex | None:
-        """惰性加载向量索引，失败返回 None。"""
-        if self._semantic_cache is not None:
-            return self._semantic_cache
-        try:
-            self._semantic_cache = semantic.SemanticIndex(self._semantic_dir())
-        except semantic.SemanticError as exc:
-            logger.debug(f"[终末地KB] 语义索引不可用：{exc}")
-            return None
-        return self._semantic_cache
-
-    async def _semantic_ids(self, query: str) -> list[str]:
-        """向量召回；任何失败都退回空表，调用方只用 BM25。"""
-        if not self._semantic_enabled():
-            return []
-        index = self._semantic_index()
-        if index is None:
-            return []
-        conf = self._semantic_conf()
-        try:
-            provider = semantic.pick_provider(
-                self.context, str(conf.get("provider") or "")
-            )
-            vector = await semantic.encode_query(provider, query)
-            limit = max(1, min(int(conf.get("candidates", 30) or 30), 100))
-            return index.search(vector, limit)
-        except Exception as exc:  # noqa: BLE001 - 语义只是增强，失败不影响检索
-            logger.warning(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
-            return []
-
-    def _fuse_hits(
-        self, hits: list[Hit], vector_ids: list[str], limit: int
-    ) -> list[Hit]:
-        """把 BM25 结果与向量结果按 RRF 融合。"""
-        if not vector_ids:
-            return hits
-        conf = self._semantic_conf()
-        weight = max(0, min(int(conf.get("weight", 100) or 100), 100)) / 100
-        fused = semantic.fuse([hit.doc_id for hit in hits], vector_ids, weight=weight)
-        known = {hit.doc_id: hit for hit in hits}
-        missing = [doc_id for doc_id in fused[:limit] if doc_id not in known]
-        if missing and self.db_path is not None:
-            known.update(fetch_hits(self.db_path, missing))
-        ordered = [known[doc_id] for doc_id in fused[:limit] if doc_id in known]
-        return ordered or hits
-
-    async def _build_vectors(self, provider: Any, umo: str) -> None:
-        """后台构建向量索引，完成后给发起者发一条消息。"""
-        try:
-            meta = await semantic.build(
-                self.db_path,
-                self._semantic_dir(),
-                provider,
-                log=lambda text: logger.info(f"[终末地KB] {text}"),
-            )
-            self._semantic_cache = None
-            text = (
-                f"向量索引完成：{meta['count']} 篇 / {meta['dim']} 维\n"
-                f"模型：{meta['model']}"
-            )
-        except Exception as exc:  # noqa: BLE001 - 构建失败要回告用户
-            text = f"向量构建失败：{exc}"
-            logger.error(f"[终末地KB] {text}")
-        try:
-            await self.context.send_message(umo, MessageChain([Plain(text=text)]))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[终末地KB] 向量结果通知发送失败：{exc}")
-
-    # ------------------------------------------------------------------ 指令
+    # ---------------------------------------------------------------- 指令
 
     def _status_text(self) -> str:
         if not self.meta or not self.db_path:
@@ -973,7 +352,7 @@ class EndfieldKBPlugin(Star):
     async def zmd_update(self, event: AstrMessageEvent):
         yield event.plain_result("正在检查并下载更新…")
         try:
-            result = await self.apply_update()
+            result = await self.updater.apply_update()
         except Exception as exc:  # noqa: BLE001 - 网络/校验失败统一提示
             yield event.plain_result(f"更新失败：{exc}")
             return
@@ -990,54 +369,21 @@ class EndfieldKBPlugin(Star):
         if not event.is_admin():
             yield event.plain_result("只有管理员能修改推送订阅。")
             return
-        umo = event.unified_msg_origin
-        umos = self._notify_umos()
-        if umo in umos:
-            yield event.plain_result(f"本会话已订阅：\n{umo}")
-            return
-        umos.append(umo)
-        self._set_notify_umos(umos)
-        yield event.plain_result(f"已订阅：{umo}\n当前共 {len(umos)} 个会话。")
+        yield event.plain_result(self.pusher.subscribe(event.unified_msg_origin))
 
     @filter.command("zmd退订", desc="把当前会话移出版本推送（仅管理员）")
     async def zmd_unsubscribe(self, event: AstrMessageEvent):
         if not event.is_admin():
             yield event.plain_result("只有管理员能修改推送订阅。")
             return
-        umo = event.unified_msg_origin
-        umos = self._notify_umos()
-        if umo not in umos:
-            yield event.plain_result(f"本会话不在订阅列表里：\n{umo}")
-            return
-        umos = [item for item in umos if item != umo]
-        self._set_notify_umos(umos)
-        yield event.plain_result(f"已退订。\n当前共 {len(umos)} 个会话。")
+        yield event.plain_result(self.pusher.unsubscribe(event.unified_msg_origin))
 
     @filter.command("zmd推送状态", desc="查看版本推送的订阅与最近检查时间")
     async def zmd_push_status(self, event: AstrMessageEvent):
         if not event.is_admin():
             yield event.plain_result("只有管理员能查看推送状态。")
             return
-        state = notify.load_state(self._notify_state_path())
-        umos = self._notify_umos()
-        conf = self._notify_conf()
-        interval = max(5, int(conf.get("interval", 60) or 60))
-        lines = [
-            "版本推送",
-            f"开关：{'开' if conf.get('enable', True) else '关'}",
-            f"间隔：{interval} 分钟",
-            f"预下载通知：{'开' if conf.get('pre_download', True) else '关'}",
-            f"订阅：{len(umos)} 个",
-        ]
-        if umos:
-            lines.extend(f"  {umo}" for umo in umos)
-        else:
-            lines.append("  （空）")
-        lines.append(
-            f"已记录：正式 {state.get('main') or '-'} / 预下载 {state.get('pre') or '-'}"
-        )
-        lines.append(f"最近检查：{state.get('checked_at') or '-'}")
-        yield event.plain_result("\n".join(lines))
+        yield event.plain_result(self.pusher.status_text())
 
     @filter.command("zmd向量", desc="用嵌入模型构建语义索引（仅管理员）")
     async def zmd_vectors(self, event: AstrMessageEvent):
@@ -1052,13 +398,13 @@ class EndfieldKBPlugin(Star):
             return
         try:
             provider = semantic.pick_provider(
-                self.context, str(self._semantic_conf().get("provider") or "")
+                self.context, str(self.retriever.semantic_conf().get("provider") or "")
             )
         except semantic.SemanticError as exc:
             yield event.plain_result(str(exc))
             return
         self._vector_task = asyncio.create_task(
-            self._build_vectors(provider, event.unified_msg_origin)
+            self.retriever.build_vectors(provider, event.unified_msg_origin)
         )
         yield event.plain_result(
             f"开始构建向量：{semantic.provider_label(provider)}\n"
@@ -1070,8 +416,8 @@ class EndfieldKBPlugin(Star):
         if not event.is_admin():
             yield event.plain_result("只有管理员能查看向量状态。")
             return
-        conf = self._semantic_conf()
-        meta = semantic.read_meta(self._semantic_dir())
+        conf = self.retriever.semantic_conf()
+        meta = semantic.read_meta(self.retriever.semantic_dir())
         providers = semantic.list_providers(self.context)
         lines = [
             "语义检索",
