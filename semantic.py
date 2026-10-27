@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import time
@@ -141,9 +142,14 @@ async def build(
     for start in range(0, total, chunk):
         batch = texts[start : start + chunk]
         try:
-            part = await provider.get_embeddings_batch(
-                batch, batch_size=16, tasks_limit=2
+            part = await asyncio.wait_for(
+                provider.get_embeddings_batch(batch, batch_size=16, tasks_limit=2),
+                timeout=600,
             )
+        except asyncio.TimeoutError as exc:
+            raise SemanticError(
+                f"编码第 {start + 1}–{start + len(batch)} 篇超时（600 秒）"
+            ) from exc
         except Exception as exc:  # noqa: BLE001 - 统一包装成模块异常
             raise SemanticError(f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}") from exc
         if len(part) != len(batch):
@@ -156,19 +162,26 @@ async def build(
     matrix = matrix / np.clip(norms, 1e-8, None)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    np.save(out_dir / VECTOR_NAME, matrix.astype(np.float16))
-    (out_dir / IDS_NAME).write_text(
-        json.dumps(ids, ensure_ascii=False), encoding="utf-8"
-    )
     meta = {
         "count": total,
         "dim": int(matrix.shape[1]),
         "model": provider_label(provider),
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    (out_dir / META_NAME).write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+
+    # 三个文件都先写临时文件再替换，避免留下新旧混搭的半成品
+    vector_tmp = out_dir / f"{VECTOR_NAME}.tmp"
+    with vector_tmp.open("wb") as handle:
+        np.save(handle, matrix.astype(np.float16))
+    vector_tmp.replace(out_dir / VECTOR_NAME)
+
+    ids_tmp = out_dir / f"{IDS_NAME}.tmp"
+    ids_tmp.write_text(json.dumps(ids, ensure_ascii=False), encoding="utf-8")
+    ids_tmp.replace(out_dir / IDS_NAME)
+
+    meta_tmp = out_dir / f"{META_NAME}.tmp"
+    meta_tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    meta_tmp.replace(out_dir / META_NAME)
     return meta
 
 

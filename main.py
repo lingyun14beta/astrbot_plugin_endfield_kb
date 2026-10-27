@@ -269,20 +269,6 @@ class EndfieldKBPlugin(Star):
     async def page_import_url(self):
         return await webapi.import_url(self)
 
-    # ---------------------------------------------------------------- 更新
-
-    def install_from_file(self, path: Path, release_hint: str = "") -> dict[str, Any]:
-        """校验并安装一个本地索引文件。"""
-        return self.updater.install_from_file(path, release_hint)
-
-    async def check_update(self) -> dict[str, Any]:
-        """比较本地与远端版本。"""
-        return await self.updater.check_update()
-
-    async def apply_update(self) -> dict[str, Any]:
-        """下载并安装最新索引。"""
-        return await self.updater.apply_update()
-
     # ---------------------------------------------------------------- 指令
 
     def _status_text(self) -> str:

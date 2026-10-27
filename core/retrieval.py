@@ -41,6 +41,7 @@ class Retriever:
     def __init__(self, plugin: Any) -> None:
         self.plugin = plugin
         self._semantic_cache: semantic.SemanticIndex | None = None
+        self._semantic_warned = False
 
     @property
     def config(self) -> dict[str, Any]:
@@ -142,11 +143,17 @@ class Retriever:
             provider = semantic.pick_provider(
                 self.plugin.context, str(conf.get("provider") or "")
             )
-            vector = await semantic.encode_query(provider, query)
+            vector = await asyncio.wait_for(
+                semantic.encode_query(provider, query), timeout=8
+            )
             limit = max(1, min(int(conf.get("candidates", 30) or 30), 100))
             return index.search(vector, limit)
         except Exception as exc:  # noqa: BLE001 - 语义只是增强，失败不影响检索
-            logger.warning(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
+            if self._semantic_warned:
+                logger.debug(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
+            else:
+                self._semantic_warned = True
+                logger.warning(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
             return []
 
     def fuse(self, hits: list[Hit], vector_ids: list[str], limit: int) -> list[Hit]:

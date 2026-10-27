@@ -104,6 +104,9 @@ class Pusher:
             f"已记录：正式 {state.get('main') or '-'} / 预下载 {state.get('pre') or '-'}"
         )
         lines.append(f"最近检查：{state.get('checked_at') or '-'}")
+        retry = int(state.get("retry") or 0)
+        if retry:
+            lines.append(f"连续失败：{retry}/{MAX_PUSH_RETRY}")
         return "\n".join(lines)
 
     # ---------------------------------------------------------------- 循环
