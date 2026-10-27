@@ -76,22 +76,22 @@
               </select>
             </label>
           </div>
-          <label class="ark-toggle">
-            <input id="rewrite" type="checkbox" />
-            <span>关键词改写</span>
-            <span class="ark-toggle-note">调用对话模型，较慢</span>
-          </label>
-        </div>
-        <div class="ark-semantic" id="semantic-bar">
-          <label class="ark-toggle">
-            <input id="semantic" type="checkbox" />
-            <span>语义检索</span>
-            <span class="ark-toggle-note" id="semantic-note">读取中…</span>
-          </label>
-          <label class="ark-field">
-            <span class="ark-field-label">模型</span>
-            <select id="semantic-provider" aria-label="嵌入模型"></select>
-          </label>
+          <div class="ark-toggles">
+            <label class="ark-toggle">
+              <input id="rewrite" type="checkbox" />
+              <span>关键词改写</span>
+              <span class="ark-toggle-note">调用对话模型，较慢</span>
+            </label>
+            <label class="ark-toggle">
+              <input id="semantic" type="checkbox" />
+              <span>语义检索</span>
+              <span class="ark-toggle-note" id="semantic-note">读取中…</span>
+            </label>
+            <label class="ark-field">
+              <span class="ark-field-label">模型</span>
+              <select id="semantic-provider" aria-label="嵌入模型"></select>
+            </label>
+          </div>
         </div>
         <p class="ark-hint" id="query-hint">
           支持长原句、少量错字与 OCR 噪声；按 <kbd>/</kbd> 聚焦输入框。
