@@ -32,6 +32,7 @@ const els = {
   updateStatus: document.getElementById("update-status"),
   dialog: document.getElementById("import-dialog"),
   importForm: document.getElementById("import-form"),
+  seg: document.querySelector(".ark-seg"),
   tabFile: document.getElementById("tab-file"),
   tabUrl: document.getElementById("tab-url"),
   importFile: document.getElementById("import-file"),
@@ -547,26 +548,51 @@ function setImportMode(mode) {
   const isFile = mode === "file";
   els.tabFile?.setAttribute("aria-selected", String(isFile));
   els.tabUrl?.setAttribute("aria-selected", String(!isFile));
+  els.seg?.setAttribute("data-mode", mode);
   const filePanel = document.querySelector('[data-panel="file"]');
   const urlPanel = document.querySelector('[data-panel="url"]');
-  if (filePanel) filePanel.hidden = !isFile;
-  if (urlPanel) urlPanel.hidden = isFile;
+  const active = isFile ? filePanel : urlPanel;
+  const inactive = isFile ? urlPanel : filePanel;
+  if (inactive) inactive.hidden = true;
+  if (active) {
+    active.hidden = false;
+    active.classList.remove("ark-panel-in");
+    void active.offsetWidth;
+    active.classList.add("ark-panel-in");
+  }
   els.importStatus.textContent = "";
   (isFile ? els.importFile : els.importUrl)?.focus();
 }
 
 function openImportDialog() {
-  if (!els.dialog) return;
+  if (!els.dialog || els.dialog.open) return;
   els.importFile.value = "";
   els.importUrl.value = "";
   els.importStatus.textContent = "";
   setImportTrack("idle");
+  els.dialog.dataset.state = "";
   els.dialog.showModal();
   setImportMode("file");
 }
 
 function closeImportDialog() {
-  els.dialog?.close();
+  const dialog = els.dialog;
+  if (!dialog || !dialog.open || dialog.dataset.state === "closing") return;
+  dialog.dataset.state = "closing";
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    dialog.removeEventListener("animationend", onEnd);
+    if (dialog.dataset.state !== "closing") return;
+    dialog.dataset.state = "";
+    if (dialog.open) dialog.close();
+  };
+  const onEnd = (event) => {
+    if (event.target === dialog) finish();
+  };
+  dialog.addEventListener("animationend", onEnd);
+  window.setTimeout(finish, 320);
 }
 
 function finishImport(result) {
@@ -685,6 +711,20 @@ function boot() {
   els.importForm?.addEventListener("submit", submitImport);
   els.importClose?.addEventListener("click", closeImportDialog);
   els.importCancel?.addEventListener("click", closeImportDialog);
+  els.dialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeImportDialog();
+  });
+  els.dialog?.addEventListener("click", (event) => {
+    if (event.target !== els.dialog) return;
+    const rect = els.dialog.getBoundingClientRect();
+    const outside =
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom;
+    if (outside) closeImportDialog();
+  });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && document.activeElement !== els.input) {

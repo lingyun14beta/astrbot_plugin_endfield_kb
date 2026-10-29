@@ -1330,9 +1330,17 @@ body {
   animation: ark-dialog-pop 260ms var(--ark-ease-out) both;
 }
 
+.ark-dialog[data-state="closing"] {
+  animation: ark-dialog-out 180ms var(--ark-ease) both;
+}
+
 .ark-dialog::backdrop {
   background: rgb(0 0 0 / 0.5);
   animation: ark-dialog-veil 220ms var(--ark-ease) both;
+}
+
+.ark-dialog[data-state="closing"]::backdrop {
+  animation: ark-dialog-veil-out 160ms var(--ark-ease) both;
 }
 
 @keyframes ark-dialog-pop {
@@ -1346,12 +1354,32 @@ body {
   }
 }
 
+@keyframes ark-dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
 @keyframes ark-dialog-veil {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes ark-dialog-veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -1389,9 +1417,26 @@ body {
 }
 
 .ark-seg {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   border: 1px solid var(--ark-rule-strong);
+  isolation: isolate;
+}
+
+.ark-seg::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  inline-size: 50%;
+  background: var(--ark-ink);
+  transform: translateX(0);
+  transition: transform 220ms var(--ark-ease-out);
+  z-index: -1;
+}
+
+.ark-seg[data-mode="url"]::before {
+  transform: translateX(100%);
 }
 
 .ark-seg button {
@@ -1401,16 +1446,32 @@ body {
   font: 500 12px/1 var(--ark-font-cjk);
   padding: 0.65rem 0.5rem;
   cursor: pointer;
+  transition: color 180ms var(--ark-ease);
 }
 
 .ark-seg button[aria-selected="true"] {
-  background: var(--ark-ink);
+  background: transparent;
   color: var(--ark-paper);
 }
 
 .ark-dialog-body {
   display: grid;
   gap: 0.5rem;
+}
+
+.ark-panel-in {
+  animation: ark-panel-in 200ms var(--ark-ease-out) both;
+}
+
+@keyframes ark-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .ark-dialog-body input[type="file"],
