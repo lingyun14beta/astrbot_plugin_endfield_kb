@@ -42,6 +42,8 @@ class Retriever:
         self.plugin = plugin
         self._semantic_cache: semantic.SemanticIndex | None = None
         self._semantic_warned = False
+        self._model_warned = False
+        self._version_warned = False
 
     @property
     def config(self) -> dict[str, Any]:
@@ -143,6 +145,32 @@ class Retriever:
             provider = semantic.pick_provider(
                 self.plugin.context, str(conf.get("provider") or "")
             )
+            current_model = semantic.provider_label(provider)
+            if index.model and current_model and index.model != current_model:
+                if not self._model_warned:
+                    self._model_warned = True
+                    logger.warning(
+                        f"[终末地KB] 向量由「{index.model}」构建，当前模型是"
+                        f"「{current_model}」，请重新执行 /zmd向量；本次只用 BM25"
+                    )
+                return []
+            current_index = str(
+                self.plugin.meta.get("index_version")
+                or self.plugin.local_release
+                or ""
+            )
+            if (
+                index.index_version
+                and current_index
+                and index.index_version != current_index
+            ):
+                if not self._version_warned:
+                    self._version_warned = True
+                    logger.warning(
+                        f"[终末地KB] 向量对应语料 {index.index_version}，"
+                        f"当前是 {current_index}，请重新执行 /zmd向量；本次只用 BM25"
+                    )
+                return []
             vector = await asyncio.wait_for(
                 semantic.encode_query(provider, query), timeout=8
             )
@@ -156,18 +184,34 @@ class Retriever:
                 logger.warning(f"[终末地KB] 语义召回失败，改用 BM25：{exc}")
             return []
 
-    def fuse(self, hits: list[Hit], vector_ids: list[str], limit: int) -> list[Hit]:
-        """把 BM25 结果与向量结果按 RRF 融合。"""
+    def fuse(
+        self,
+        hits: list[Hit],
+        vector_ids: list[str],
+        limit: int,
+        kinds: list[str] | None = None,
+    ) -> list[Hit]:
+        """把 BM25 结果与向量结果按 RRF 融合，保持范围筛选。"""
         if not vector_ids:
             return hits
         conf = self.semantic_conf()
         weight = max(0, min(int(conf.get("weight", 100) or 100), 100)) / 100
         fused = semantic.fuse([hit.doc_id for hit in hits], vector_ids, weight=weight)
         known = {hit.doc_id: hit for hit in hits}
-        missing = [doc_id for doc_id in fused[:limit] if doc_id not in known]
+        missing = [doc_id for doc_id in fused if doc_id not in known][: limit * 2]
         if missing and self.db_path is not None:
             known.update(fetch_hits(self.db_path, missing))
-        ordered = [known[doc_id] for doc_id in fused[:limit] if doc_id in known]
+        allowed = set(kinds) if kinds else None
+        ordered: list[Hit] = []
+        for doc_id in fused:
+            hit = known.get(doc_id)
+            if hit is None:
+                continue
+            if allowed is not None and hit.kind not in allowed:
+                continue
+            ordered.append(hit)
+            if len(ordered) >= limit:
+                break
         return ordered or hits
 
     # ---------------------------------------------------------------- 向量构建
@@ -183,6 +227,11 @@ class Retriever:
                     self.semantic_dir(),
                     provider,
                     log=lambda item: logger.info(f"[终末地KB] {item}"),
+                    index_version=str(
+                        self.plugin.meta.get("index_version")
+                        or self.plugin.local_release
+                        or ""
+                    ),
                 )
                 self._semantic_cache = None
                 text = (
@@ -217,7 +266,9 @@ class Retriever:
         )
         hits = search(self.db_path, query, top_k=top_k, score_ratio=ratio, kinds=kinds)
         if self.semantic_enabled():
-            hits = self.fuse(hits, await self.semantic_ids(query), top_k)
+            hits = self.fuse(
+                hits, await self.semantic_ids(query), top_k, kinds=kinds
+            )
         return hits
 
     def format_for_llm(self, hits: list[Hit], query: str) -> str:

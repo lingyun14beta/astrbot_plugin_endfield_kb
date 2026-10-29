@@ -171,6 +171,7 @@ async def build(
     provider: Any,
     log: LogFn = print,
     incremental: bool = True,
+    index_version: str = "",
 ) -> dict[str, Any]:
     """把索引里的文档编码成向量并落盘；默认只编码新增或内容变化的文档。
 
@@ -179,10 +180,11 @@ async def build(
         out_dir: 向量文件输出目录，通常与索引同目录。
         provider: 嵌入模型实例。
         log: 进度输出函数。
-        incremental: 是否复用上次的向量；维度变化或首次构建时自动全量。
+        incremental: 是否复用上次的向量；模型或维度变化时自动全量。
+        index_version: 这份向量对应的语料版本，用于识别索引更新后的失配。
 
     Returns:
-        含 count、dim、model、built_at、reused、added 的元信息。
+        含 count、dim、model、built_at、index_version、reused、added 的元信息。
 
     Raises:
         SemanticError: numpy 缺失、索引为空或模型调用失败。
@@ -199,14 +201,26 @@ async def build(
     hashes = [_doc_hash(text) for text in texts]
 
     old_ids, old_matrix, old_hashes, old_dim = _load_existing(out_dir)
+    old_meta = read_meta(out_dir) or {}
+    old_model = str(old_meta.get("model") or "")
+    current_model = provider_label(provider)
+    same_model = bool(old_model) and old_model == current_model
     dim = _dim_of(provider)
-    if incremental and old_matrix is not None and (dim <= 0 or dim == old_dim):
+    if (
+        incremental
+        and old_matrix is not None
+        and same_model
+        and (dim <= 0 or dim == old_dim)
+    ):
         log(f"增量构建：复用 {len(old_ids)} 条旧向量")
         reuse = True
         dim = old_dim if dim <= 0 else dim
     else:
         if incremental and old_matrix is not None:
-            log(f"向量维度从 {old_dim} 变为 {dim}，改为全量构建")
+            if not same_model:
+                log(f"模型由「{old_model or '未知'}」变为「{current_model}」，改为全量构建")
+            else:
+                log(f"向量维度从 {old_dim} 变为 {dim}，改为全量构建")
         reuse = False
         dim = _dim_of(provider)
 
@@ -245,6 +259,7 @@ async def build(
         "count": n,
         "dim": int(matrix.shape[1]),
         "model": provider_label(provider),
+        "index_version": index_version,
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "reused": n - len(need),
         "added": len(need),
@@ -310,6 +325,9 @@ class SemanticIndex:
         self.matrix = np.load(vector_path).astype(np.float32)
         if len(self.ids) != self.matrix.shape[0]:
             raise SemanticError("向量文件与 id 列表数量不一致，建议重新构建")
+        meta = read_meta(out_dir) or {}
+        self.model = str(meta.get("model") or "")
+        self.index_version = str(meta.get("index_version") or "")
 
     @property
     def size(self) -> int:

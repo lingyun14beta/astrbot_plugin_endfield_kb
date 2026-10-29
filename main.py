@@ -38,7 +38,7 @@ COMMAND_HELP = (
     "  /zmd            不带关键词，显示索引状态\n"
     "  /zmd状态        索引篇数、语料版本与体积\n"
     "  /zmd重载        重新扫描本地索引\n"
-    "  /zmd更新        检查并下载最新索引\n"
+    "  /zmd更新        检查并下载最新索引（管理员）\n"
     "  /zmd帮助        本条说明\n"
     "  /zmd订阅        当前会话加入版本推送（管理员）\n"
     "  /zmd退订        移出版本推送（管理员）\n"
@@ -363,8 +363,11 @@ class EndfieldKBPlugin(Star):
         self._load_index()
         yield event.plain_result("索引已重载。\n\n" + self._status_text())
 
-    @filter.command("zmd更新", desc="检查并安装最新索引")
+    @filter.command("zmd更新", desc="检查并安装最新索引（仅管理员）")
     async def zmd_update(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能更新索引。")
+            return
         yield event.plain_result("正在检查并下载更新…")
         try:
             result = await self.updater.apply_update()
@@ -446,6 +449,8 @@ class EndfieldKBPlugin(Star):
                 f"向量索引：{meta.get('count')} 篇 / {meta.get('dim')} 维 / {meta.get('model')}"
             )
             lines.append(f"构建时间：{meta.get('built_at')}")
+            if meta.get("index_version"):
+                lines.append(f"对应语料：{meta.get('index_version')}")
         else:
             lines.append("向量索引：未构建（/zmd向量 开始构建）")
         if providers:
