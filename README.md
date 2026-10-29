@@ -25,7 +25,7 @@
 1. 把插件目录放到 `AstrBot/data/plugins/astrbot_plugin_endfield_kb/`
 2. 安装依赖：`pip install jieba`（AstrBot 运行环境通常已自带）
 3. 在 WebUI 插件页启用，或重启 AstrBot
-4. 打开插件详情页的「知识库控制台」，点「下载索引」
+4. 打开插件详情页的「终末地档案库」，点「下载索引」
 
 ## 磁盘占用
 
@@ -46,7 +46,7 @@
 
 ### A. 页面按钮（推荐）
 
-打开「知识库控制台」，点 **下载索引**（约 12.5 MiB）。下载、校验、解压、替换全自动，完成后顶部数字立即刷新。
+打开「终末地档案库」，点 **下载索引**（约 12.5 MiB）。下载、校验、解压、替换全自动，完成后顶部数字立即刷新。
 
 ![首次安装](docs/kb-console-empty.png)
 
@@ -145,7 +145,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 
 ### WebUI 控制台
 
-插件详情页打开「知识库控制台」：检索、查看完整正文、展开出处、切换暗色主题，竖屏自动重排。
+插件详情页打开「终末地档案库」：检索、查看完整正文、展开出处、切换暗色主题，竖屏自动重排。
 
 输入框下面两个筛选：
 
@@ -227,7 +227,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 模型相关的代码单独放在 `semantic.py`，主插件只做接线。
 
 - 需要先在「模型提供商」里配一个 embedding 类型的模型
-- **控制台里也有开关和模型下拉**：和配置页的 `semantic_group.enable` 是同一个值，改哪边都生效（配置页刷新后同步显示）
+- **控制台里也有开关**：和配置页的 `semantic_group.enable` 是同一个值，改哪边都生效（配置页刷新后同步显示）；嵌入模型在配置页填 id
 - `/zmd向量` 构建向量（管理员），**默认增量**：内容没变的文档直接复用旧向量，只编码新增或有改动的
 - `/zmd向量状态` 看向量索引、可用模型 id 和维度
 - 向量存在索引目录的 `semantic/` 下：`semantic_vectors.npy`（float16）、`semantic_docs.json`（id + 内容指纹）、`semantic_meta.json`
@@ -251,8 +251,8 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `/astrbot_plugin_endfield_kb/update` | POST | 下载并安装最新索引 |
 | `/astrbot_plugin_endfield_kb/upload` | POST | 接收手动上传的索引文件 |
 | `/astrbot_plugin_endfield_kb/import_url` | POST | 按链接下载并导入索引 |
-| `/astrbot_plugin_endfield_kb/semantic` | GET | 语义开关、可用嵌入模型与向量索引状态 |
-| `/astrbot_plugin_endfield_kb/semantic` | POST | 切换语义开关或嵌入模型 |
+| `/astrbot_plugin_endfield_kb/semantic` | GET | 语义开关与向量索引状态 |
+| `/astrbot_plugin_endfield_kb/semantic` | POST | 切换语义开关 |
 
 ## 设计取舍
 

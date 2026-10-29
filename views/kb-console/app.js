@@ -10,7 +10,6 @@ const els = {
   submit: document.getElementById("submit"),
   rewrite: document.getElementById("rewrite"),
   semantic: document.getElementById("semantic"),
-  semanticProvider: document.getElementById("semantic-provider"),
   semanticNote: document.getElementById("semantic-note"),
   scope: document.getElementById("scope"),
   limit: document.getElementById("limit"),
@@ -422,22 +421,7 @@ function semanticNote(payload) {
 }
 
 function renderSemantic(payload) {
-  const providers = Array.isArray(payload.providers) ? payload.providers : [];
   els.semantic.checked = Boolean(payload.enable);
-  els.semanticProvider.innerHTML = "";
-  const auto = document.createElement("option");
-  auto.value = "";
-  auto.textContent = providers.length ? "默认（第一个）" : "无可用模型";
-  els.semanticProvider.appendChild(auto);
-  providers.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.id;
-    const dim = item.dim ? ` · ${item.dim}维` : "";
-    option.textContent = `${item.id}${item.model ? ` · ${item.model}` : ""}${dim}`;
-    els.semanticProvider.appendChild(option);
-  });
-  els.semanticProvider.value = payload.provider || "";
-  els.semanticProvider.disabled = providers.length === 0;
   els.semanticNote.textContent = semanticNote(payload);
 }
 
@@ -685,9 +669,6 @@ function boot() {
   els.limit?.addEventListener("change", rerunIfIdle);
   els.semantic?.addEventListener("change", () => {
     saveSemantic({ enable: els.semantic.checked });
-  });
-  els.semanticProvider?.addEventListener("change", () => {
-    saveSemantic({ provider: els.semanticProvider.value });
   });
   els.pagerPrev?.addEventListener("click", () => goToPage(-1));
   els.pagerNext?.addEventListener("click", () => goToPage(1));

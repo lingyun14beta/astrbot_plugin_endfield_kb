@@ -188,26 +188,22 @@ def _semantic_payload(plugin: Any) -> dict[str, Any]:
     meta = semantic.read_meta(plugin.retriever.semantic_dir())
     return {
         "enable": bool(conf.get("enable")),
-        "provider": str(conf.get("provider") or ""),
-        "providers": semantic.list_providers(plugin.context),
         "index": meta,
         "building": plugin.vector_building(),
     }
 
 
 async def semantic_state(plugin: Any):
-    """返回语义检索开关、模型列表与向量索引状态。"""
+    """返回语义检索开关与向量索引状态。"""
     return json_response(_semantic_payload(plugin))
 
 
 async def semantic_save(plugin: Any):
-    """从控制台切换语义检索开关或模型。"""
+    """从控制台切换语义检索开关。"""
     payload = await request.json(default={})
     group = dict(plugin.retriever.semantic_conf())
     if "enable" in payload:
         group["enable"] = bool(payload["enable"])
-    if "provider" in payload:
-        group["provider"] = str(payload["provider"] or "")
     plugin.config["semantic_group"] = group
     plugin.save_config()
     return json_response(_semantic_payload(plugin))

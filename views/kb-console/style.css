@@ -313,10 +313,6 @@ body {
   outline-offset: 2px;
 }
 
-#semantic-provider {
-  max-inline-size: 16rem;
-}
-
 .ark-hint {
   margin: 0.55rem 0 0;
   font-size: 12px;
