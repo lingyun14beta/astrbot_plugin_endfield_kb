@@ -23,18 +23,18 @@ class FetchError(RuntimeError):
 
 
 def is_public_url(url: str) -> bool:
-    """判断 URL 是否指向公网地址，用于挡住内网 SSRF。
+    """判断 URL 是否是可用的公网 https 链接，用于挡住内网 SSRF。
 
-    解析域名后要求所有地址都是全局可路由地址；解析失败或为空视为不可用。
+    只接受 https；解析域名后要求所有地址都是全局可路由地址。
 
     Args:
         url: 待检查的链接。
 
     Returns:
-        是公网 http/https 链接时为 True。
+        是公网 https 链接时为 True。
     """
     parsed = urlparse(url or "")
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    if parsed.scheme != "https" or not parsed.hostname:
         return False
     try:
         infos = socket.getaddrinfo(parsed.hostname, None)

@@ -55,7 +55,7 @@
 控制台点 **导入索引**，弹窗里二选一：
 
 - **上传文件**：选择本地 `.zip` / `.gz` / `.sqlite3`（不超过 256 MB）
-- **从链接导入**：填 GitHub Release 或 ModelScope 的直链，由服务器下载；只接受公网地址
+- **从链接导入**：填 GitHub Release 或 ModelScope 的直链，由服务器下载；只接受公网 https 地址
 
 ![导入索引](docs/kb-console-import.png)
 

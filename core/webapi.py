@@ -159,10 +159,10 @@ async def import_url(plugin: Any):
     """按用户提供的链接下载并导入索引。"""
     payload = await request.json(default={})
     url = str(payload.get("url") or "").strip()
-    if not url.lower().startswith(("http://", "https://")):
-        return error_response("只支持 http/https 链接", status_code=400)
+    if not url.lower().startswith("https://"):
+        return error_response("只支持 https 链接", status_code=400)
     if not await asyncio.to_thread(index_fetch.is_public_url, url):
-        return error_response("只允许下载公网地址，内网链接已拒绝", status_code=400)
+        return error_response("只允许下载公网 https 地址，内网链接已拒绝", status_code=400)
     try:
         data = await index_fetch.fetch(url, timeout=120)
     except Exception as exc:  # noqa: BLE001
