@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
+import socket
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 MAX_BYTES = 256 * 1024 * 1024
 USER_AGENT = "astrbot-plugin-endfield-kb/1.2"
@@ -17,6 +20,37 @@ USER_AGENT = "astrbot-plugin-endfield-kb/1.2"
 
 class FetchError(RuntimeError):
     """下载或校验失败。"""
+
+
+def is_public_url(url: str) -> bool:
+    """判断 URL 是否指向公网地址，用于挡住内网 SSRF。
+
+    解析域名后要求所有地址都是全局可路由地址；解析失败或为空视为不可用。
+
+    Args:
+        url: 待检查的链接。
+
+    Returns:
+        是公网 http/https 链接时为 True。
+    """
+    parsed = urlparse(url or "")
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        address = info[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+        if not ip.is_global:
+            return False
+    return True
 
 
 def _fetch(url: str, timeout: float) -> bytes:

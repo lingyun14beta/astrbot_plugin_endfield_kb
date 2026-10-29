@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -29,8 +30,17 @@ class Pusher:
         return self.plugin.config
 
     def state_path(self) -> Path:
-        """通知状态的落盘位置，与索引目录同级。"""
-        return self.plugin.index_dir.parent / notify.STATE_NAME
+        """通知状态的落盘位置，放在索引目录内；旧位置会自动迁移。"""
+        index_dir = self.plugin.index_dir
+        target = index_dir / notify.STATE_NAME
+        legacy = index_dir.parent / notify.STATE_NAME
+        if not target.exists() and legacy.is_file():
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(legacy), str(target))
+            except OSError:
+                pass
+        return target
 
     def conf(self) -> dict[str, Any]:
         """读取版本推送配置；兼容早期写在顶层的几个键。"""

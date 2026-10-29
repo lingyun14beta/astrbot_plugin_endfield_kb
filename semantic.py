@@ -128,6 +128,15 @@ def _load_existing(
     return ids, matrix, hashes, int(matrix.shape[1])
 
 
+def _cleanup_tmp(out_dir: Path) -> None:
+    """删除上次中断留下的临时文件。"""
+    for name in (VECTOR_NAME, DOCS_NAME, META_NAME):
+        try:
+            (out_dir / f"{name}.tmp").unlink()
+        except OSError:
+            pass
+
+
 async def _embed_batches(
     provider: Any,
     texts: list[str],
@@ -192,6 +201,7 @@ async def build(
     if np is None:
         raise SemanticError("当前环境缺少 numpy，无法构建向量索引")
 
+    _cleanup_tmp(out_dir)
     rows = _read_docs(db_path)
     if not rows:
         raise SemanticError("索引里没有文档，无法构建向量")
@@ -265,20 +275,27 @@ async def build(
         "added": len(need),
     }
 
-    # 三个文件都先写临时文件再替换，避免留下新旧混搭的半成品
-    vector_tmp = out_dir / f"{VECTOR_NAME}.tmp"
-    with vector_tmp.open("wb") as handle:
-        np.save(handle, matrix.astype(np.float16))
-    vector_tmp.replace(out_dir / VECTOR_NAME)
+    # 三个文件都先写临时文件再统一替换，失败时清掉残留
+    try:
+        vector_tmp = out_dir / f"{VECTOR_NAME}.tmp"
+        with vector_tmp.open("wb") as handle:
+            np.save(handle, matrix.astype(np.float16))
 
-    docs = [{"id": doc_id, "hash": digest} for doc_id, digest in zip(ids, hashes)]
-    docs_tmp = out_dir / f"{DOCS_NAME}.tmp"
-    docs_tmp.write_text(json.dumps(docs, ensure_ascii=False), encoding="utf-8")
-    docs_tmp.replace(out_dir / DOCS_NAME)
+        docs = [{"id": doc_id, "hash": digest} for doc_id, digest in zip(ids, hashes)]
+        docs_tmp = out_dir / f"{DOCS_NAME}.tmp"
+        docs_tmp.write_text(json.dumps(docs, ensure_ascii=False), encoding="utf-8")
 
-    meta_tmp = out_dir / f"{META_NAME}.tmp"
-    meta_tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    meta_tmp.replace(out_dir / META_NAME)
+        meta_tmp = out_dir / f"{META_NAME}.tmp"
+        meta_tmp.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        vector_tmp.replace(out_dir / VECTOR_NAME)
+        docs_tmp.replace(out_dir / DOCS_NAME)
+        meta_tmp.replace(out_dir / META_NAME)
+    except BaseException:
+        _cleanup_tmp(out_dir)
+        raise
     return meta
 
 
