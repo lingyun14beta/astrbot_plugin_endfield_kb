@@ -343,6 +343,10 @@ class SemanticIndex:
         if len(self.ids) != self.matrix.shape[0]:
             raise SemanticError("向量文件与 id 列表数量不一致，建议重新构建")
         meta = read_meta(out_dir) or {}
+        if meta.get("count") and int(meta["count"]) != len(self.ids):
+            raise SemanticError("元信息与向量数量不一致，建议重新构建")
+        if meta.get("dim") and int(meta["dim"]) != int(self.matrix.shape[1]):
+            raise SemanticError("元信息与向量维度不一致，建议重新构建")
         self.model = str(meta.get("model") or "")
         self.index_version = str(meta.get("index_version") or "")
 

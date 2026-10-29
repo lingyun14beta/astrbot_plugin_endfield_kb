@@ -374,6 +374,9 @@ class EndfieldKBPlugin(Star):
         except Exception as exc:  # noqa: BLE001 - 网络/校验失败统一提示
             yield event.plain_result(f"更新失败：{exc}")
             return
+        if result.get("up_to_date"):
+            yield event.plain_result(result.get("message") or "已是最新。")
+            return
         if result.get("ok"):
             yield event.plain_result(
                 f"索引已更新：{result.get('release')} / {result.get('documents')} 篇\n\n"
@@ -426,7 +429,7 @@ class EndfieldKBPlugin(Star):
         )
         yield event.plain_result(
             f"开始构建向量：{semantic.provider_label(provider)}\n"
-            "需要把全部文档送进模型，可能要几分钟，完成后在这里通知。"
+            "只需要编码新增或有改动的文档，可能要几分钟，完成后在这里通知。"
         )
 
     @filter.command("zmd向量状态", desc="查看语义索引与可用的嵌入模型（仅管理员）")

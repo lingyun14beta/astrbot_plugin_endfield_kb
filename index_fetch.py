@@ -12,7 +12,7 @@ import json
 import socket
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 MAX_BYTES = 256 * 1024 * 1024
 USER_AGENT = "astrbot-plugin-endfield-kb/1.2"
@@ -20,6 +20,16 @@ USER_AGENT = "astrbot-plugin-endfield-kb/1.2"
 
 class FetchError(RuntimeError):
     """下载或校验失败。"""
+
+
+class _PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """跟随重定向前复查目标地址，避免跳进内网。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urljoin(req.full_url, newurl)
+        if not is_public_url(target):
+            raise FetchError("重定向目标不是公网 https 地址")
+        return super().redirect_request(req, fp, code, msg, headers, target)
 
 
 def is_public_url(url: str) -> bool:
@@ -65,6 +75,24 @@ def _fetch(url: str, timeout: float) -> bytes:
 async def fetch(url: str, timeout: float = 15) -> bytes:
     """异步取一个 URL 的字节。"""
     return await asyncio.to_thread(_fetch, url, timeout)
+
+
+def _fetch_public(url: str, timeout: float) -> bytes:
+    """带公网校验的下载，重定向也会复查。"""
+    if not is_public_url(url):
+        raise FetchError("只允许下载公网 https 地址")
+    opener = urllib.request.build_opener(_PublicRedirectHandler())
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with opener.open(request, timeout=timeout) as response:
+        data = response.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise FetchError("文件超过 256 MB 上限")
+    return data
+
+
+async def fetch_public(url: str, timeout: float = 120) -> bytes:
+    """异步下载公网 https 资源，拒绝内网与非法重定向。"""
+    return await asyncio.to_thread(_fetch_public, url, timeout)
 
 
 def parse_urls(value: str | list[str] | None) -> list[str]:

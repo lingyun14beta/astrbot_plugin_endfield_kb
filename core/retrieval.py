@@ -198,7 +198,7 @@ class Retriever:
         weight = max(0, min(int(conf.get("weight", 100) or 100), 100)) / 100
         fused = semantic.fuse([hit.doc_id for hit in hits], vector_ids, weight=weight)
         known = {hit.doc_id: hit for hit in hits}
-        missing = [doc_id for doc_id in fused if doc_id not in known][: limit * 2]
+        missing = [doc_id for doc_id in fused if doc_id not in known]
         if missing and self.db_path is not None:
             known.update(fetch_hits(self.db_path, missing))
         allowed = set(kinds) if kinds else None

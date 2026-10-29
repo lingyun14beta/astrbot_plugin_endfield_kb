@@ -27,6 +27,28 @@ def version_key(value: str) -> str:
     return f"{match.group(1)}{(match.group(2) or '')}".lower()
 
 
+def compare(left: str, right: str) -> int:
+    """按数字段比较两个版本号。
+
+    Args:
+        left: 左侧版本。
+        right: 右侧版本。
+
+    Returns:
+        left 小于 / 等于 / 大于 right 时分别为 -1 / 0 / 1。
+    """
+    def key(value: str) -> tuple[list[int], str]:
+        numbers = [int(part) for part in re.findall(r"\d+", value or "")]
+        return numbers, (value or "").lower()
+
+    left_key, right_key = key(left), key(right)
+    if left_key < right_key:
+        return -1
+    if left_key > right_key:
+        return 1
+    return 0
+
+
 def repair_url_value(value: object) -> list[str] | None:
     """把字符串或被拆成单字符的列表还原成地址列表。
 

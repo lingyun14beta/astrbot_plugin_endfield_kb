@@ -435,11 +435,12 @@ async function loadSemantic() {
   }
 }
 
-async function saveSemantic(patch) {
+async function saveSemantic(patch, fallback) {
   try {
     const payload = await bridge.apiPost("semantic", patch);
     if (payload) renderSemantic(payload);
   } catch (error) {
+    if (typeof fallback === "boolean") els.semantic.checked = fallback;
     els.semanticNote.textContent = "保存失败";
   }
 }
@@ -522,6 +523,11 @@ async function handleApplyUpdate() {
     const result = await bridge.apiPost("update", {});
     if (!result.ok) {
       updateStatus(result.message || "更新失败");
+      return;
+    }
+    if (result.up_to_date) {
+      state.pendingUpdate = null;
+      updateStatus(result.message || "已是最新");
       return;
     }
     state.pendingUpdate = null;
@@ -694,7 +700,7 @@ function boot() {
   els.scope?.addEventListener("change", rerunIfIdle);
   els.limit?.addEventListener("change", rerunIfIdle);
   els.semantic?.addEventListener("change", () => {
-    saveSemantic({ enable: els.semantic.checked });
+    saveSemantic({ enable: els.semantic.checked }, !els.semantic.checked);
   });
   els.pagerPrev?.addEventListener("click", () => goToPage(-1));
   els.pagerNext?.addEventListener("click", () => goToPage(1));

@@ -109,8 +109,26 @@ class Updater:
         }
 
     async def apply_update(self) -> dict[str, Any]:
-        """下载并安装最新索引。"""
+        """下载并安装最新索引；已最新或远端更旧时不下载。"""
         manifest, _ = await index_fetch.fetch_manifest(self.manifest_urls())
+        current = self.plugin.local_release or versioning.version_key(
+            self.plugin.meta.get("index_version") or self.plugin.meta.get("release", "")
+        )
+        if manifest:
+            remote = versioning.version_key(str(manifest.get("release_id") or ""))
+            if remote and current and remote == current:
+                return {
+                    "ok": True,
+                    "up_to_date": True,
+                    "release": remote,
+                    "message": f"已是最新：{remote}",
+                }
+            if remote and current and versioning.compare(remote, current) < 0:
+                return {
+                    "ok": False,
+                    "message": f"远端版本 {remote} 比本地 {current} 旧，已取消",
+                }
+
         urls = index_fetch.parse_urls(manifest.get("urls")) if manifest else []
         sha = str(manifest.get("sha256") or "") if manifest else ""
         if not urls:

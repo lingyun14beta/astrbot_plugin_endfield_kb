@@ -132,7 +132,7 @@ async def upload(plugin: Any):
 
     target = plugin.index_dir / f".upload{suffix}"
     try:
-        await item.save(target)
+        await item.save(target, max_bytes=index_fetch.MAX_BYTES)
         result = await asyncio.to_thread(plugin.updater.install_from_file, target)
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=400)
@@ -164,7 +164,7 @@ async def import_url(plugin: Any):
     if not await asyncio.to_thread(index_fetch.is_public_url, url):
         return error_response("只允许下载公网 https 地址，内网链接已拒绝", status_code=400)
     try:
-        data = await index_fetch.fetch(url, timeout=120)
+        data = await index_fetch.fetch_public(url, timeout=120)
     except Exception as exc:  # noqa: BLE001
         return error_response(f"下载失败：{exc}", status_code=400)
 

@@ -1,9 +1,9 @@
 name: astrbot_plugin_endfield_kb
 display_name: 终末地中文知识库
-short_desc: 本地检索《明日方舟：终末地》的剧情、档案与设定，无需嵌入模型
+short_desc: 本地检索《明日方舟：终末地》的剧情、档案与设定，默认无需嵌入模型
 desc: >-
   把《明日方舟：终末地》的剧情原文、档案与设定编译成本地索引，供模型按需检索。
-  无需嵌入模型与外部服务，贴整句原文也能命中。
+  默认无需嵌入模型与外部服务，贴整句原文也能命中；可选接入 embedding 做语义检索。
 version: v1.4.19
 author: local
 repo: ""
