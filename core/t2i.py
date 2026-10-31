@@ -58,7 +58,7 @@ def _strip_heading(text: str, prefix: str) -> str:
 
 
 def clean_excerpt(title: str, coll: str, body: str, limit: int = 500) -> str:
-    """清洗正文：去掉资料引用串与开头的标题/集合名，再按上限截断。
+    """清洗正文：去掉资料引用串与开头的标题/集合名，保留对话换行。
 
     Args:
         title: 文档标题。
@@ -69,11 +69,26 @@ def clean_excerpt(title: str, coll: str, body: str, limit: int = 500) -> str:
     Returns:
         可直接放进卡片的摘要文本。
     """
-    text = _norm(REF_RE.sub(" ", body or ""))
-    stripped = _strip_heading(text, title)
-    if stripped == text and coll:
-        stripped = _strip_heading(text, coll)
-    text = stripped.lstrip("·:：-— ")
+    raw = REF_RE.sub(" ", body or "")
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for take in (2, 1):
+        head = _canon(" ".join(lines[:take]))
+        if head and head in {_canon(title), _canon(coll)}:
+            lines = lines[take:]
+            break
+    else:
+        if lines:
+            stripped = _strip_heading(lines[0], title)
+            if stripped == lines[0] and coll:
+                stripped = _strip_heading(lines[0], coll)
+            lines[0] = stripped
+
+    cleaned: list[str] = []
+    for line in lines:
+        text = " ".join(line.split()).lstrip("·:：-— ")
+        if text:
+            cleaned.append(text)
+    text = "\n".join(cleaned).lstrip("·:：-— ")
     if limit > 0 and len(text) > limit:
         text = text[:limit] + "…"
     return text
@@ -209,16 +224,23 @@ class CardRenderer:
                 else ""
             ),
             "hits": [
-                {
-                    "index": f"{index + 1:02d}",
-                    "kind": hit.kind_label,
-                    "title": hit.title,
-                    "coll": hit.coll,
-                    "excerpt": clean_excerpt(hit.title, hit.coll, hit.body, limit),
-                    "refs": len(hit.ref_list),
-                }
+                self._item(index, hit, limit)
                 for index, hit in enumerate(hits)
             ],
+        }
+
+    @staticmethod
+    def _item(index: int, hit: Any, limit: int) -> dict[str, Any]:
+        """拼一条结果的模板数据，长摘要走两列。"""
+        excerpt = clean_excerpt(hit.title, hit.coll, hit.body, limit)
+        return {
+            "index": f"{index + 1:02d}",
+            "kind": hit.kind_label,
+            "title": hit.title,
+            "coll": hit.coll,
+            "excerpt": excerpt,
+            "columns": len(excerpt) > 320 or excerpt.count("\n") >= 8,
+            "refs": len(hit.ref_list),
         }
 
     @staticmethod

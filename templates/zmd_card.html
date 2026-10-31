@@ -93,6 +93,12 @@
   .excerpt {
     margin: 9px 0 0; max-width: 540px; font-size: 12px; line-height: 1.9;
     color: var(--excerpt); letter-spacing: 0.01em;
+    white-space: pre-line;
+  }
+  .excerpt.columns {
+    column-count: 2;
+    column-gap: 26px;
+    column-rule: 1px solid var(--rule);
   }
   .side {
     text-align: right; font-family: var(--font-mono); font-size: 8px;
@@ -145,7 +151,7 @@
         <div class="body">
           <h2>{{ hit.title | e }}</h2>
           <p class="coll">{{ hit.coll | e }}</p>
-          <p class="excerpt">{{ hit.excerpt | e }}</p>
+          <p class="excerpt{% if hit.columns %} columns{% endif %}">{{ hit.excerpt | e }}</p>
         </div>
         <div class="side">{% if hit.refs %}REF · {{ hit.refs }}{% endif %}</div>
       </article>
