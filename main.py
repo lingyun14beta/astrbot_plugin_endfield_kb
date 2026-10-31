@@ -40,7 +40,7 @@ COMMAND_HELP = (
     "  /zmd文字 <词>   强制文本结果，不经过出图\n"
     "  /zmd            不带关键词，显示索引状态\n"
     "  /zmd状态        索引篇数、语料版本与体积\n"
-    "  /zmd重载        重新扫描本地索引\n"
+    "  /zmd重载        重新扫描本地索引（管理员）\n"
     "  /zmd更新        检查并下载最新索引（管理员）\n"
     "  /zmd帮助        本条说明\n"
     "  /zmd订阅        当前会话加入版本推送（管理员）\n"
@@ -357,12 +357,17 @@ class EndfieldKBPlugin(Star):
             hits = await self.retriever.query(query, top_k=self.t2i.max_hits())
             elapsed_ms = round((time.perf_counter() - started) * 1000)
             if hits:
+                yield event.plain_result("正在生成卡片…")
                 path = await self.t2i.render(
                     hits, query, elapsed_ms, event.unified_msg_origin
                 )
                 if path:
                     yield event.image_result(path)
                     return
+                yield event.plain_result(
+                    self.retriever.format_for_llm(hits, query)
+                )
+                return
         yield event.plain_result(await self.search_text(query, 5))
 
     @filter.command("zmd文字", desc="检索并以文本返回，不经过出图")
@@ -381,8 +386,11 @@ class EndfieldKBPlugin(Star):
     async def zmd_help(self, event: AstrMessageEvent):
         yield event.plain_result(COMMAND_HELP)
 
-    @filter.command("zmd重载", desc="重新扫描本地索引文件")
+    @filter.command("zmd重载", desc="重新扫描本地索引文件（仅管理员）")
     async def zmd_reload(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("只有管理员能重载索引。")
+            return
         self._load_index()
         yield event.plain_result("索引已重载。\n\n" + self._status_text())
 

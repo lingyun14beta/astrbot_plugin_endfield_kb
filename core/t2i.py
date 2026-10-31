@@ -28,16 +28,23 @@ def _norm(text: str) -> str:
 
 
 def _strip_heading(text: str, prefix: str) -> str:
-    """去掉正文开头重复的标题/集合名，只在其后紧跟分隔符时生效。"""
+    """去掉正文开头重复的标题/集合名。
+
+    只有开头的字符逐个匹配 prefix，并且后面紧跟分隔符时才截断；
+    避免把正文里的时间、说话人误当成标题删掉。
+    """
     target = _canon(prefix)
     if not target:
         return text
-    count = 0
+    position = 0
     cut = -1
     for index, char in enumerate(text):
-        if CANON_RE.match(char) is None:
-            count += 1
-        if count == len(target):
+        if CANON_RE.match(char) is not None:
+            continue
+        if position >= len(target) or char.lower() != target[position].lower():
+            return text
+        position += 1
+        if position == len(target):
             cut = index + 1
             break
     if cut < 0:
@@ -61,9 +68,10 @@ def clean_excerpt(title: str, coll: str, body: str, limit: int = 500) -> str:
         可直接放进卡片的摘要文本。
     """
     text = _norm(REF_RE.sub(" ", body or ""))
-    for prefix in (title, coll):
-        text = _strip_heading(text, prefix)
-    text = text.lstrip("·:：-— ")
+    stripped = _strip_heading(text, title)
+    if stripped == text and coll:
+        stripped = _strip_heading(text, coll)
+    text = stripped.lstrip("·:：-— ")
     if limit > 0 and len(text) > limit:
         text = text[:limit] + "…"
     return text
@@ -138,12 +146,12 @@ class CardRenderer:
         return max(1, min(value, 8))
 
     def excerpt_chars(self) -> int:
-        """每条摘要上限，限制在 200-2000。"""
+        """每条摘要上限，限制在 500-2000。"""
         try:
             value = int(self.conf().get("excerpt_chars", 500) or 500)
         except (TypeError, ValueError):
             value = 500
-        return max(200, min(value, 2000))
+        return max(500, min(value, 2000))
 
     def timeout(self) -> float:
         """渲染超时秒数，限制在 5-60。"""
@@ -201,6 +209,20 @@ class CardRenderer:
             ],
         }
 
+    @staticmethod
+    def _valid_image(path: Any) -> bool:
+        """检查落盘文件确实是图片，避免把错误页当成图片发出去。"""
+        try:
+            file = Path(str(path))
+            if not file.is_file() or file.stat().st_size < 1024:
+                return False
+            head = file.read_bytes()[:8]
+        except OSError:
+            return False
+        return head.startswith(b"\xff\xd8\xff") or head.startswith(
+            b"\x89PNG\r\n\x1a\n"
+        )
+
     async def render(
         self,
         hits: list[Any],
@@ -226,15 +248,18 @@ class CardRenderer:
                     self._data(hits, query, elapsed_ms),
                     return_url=False,
                     options={
-                        "type": "png",
+                        "type": "jpeg",
                         "quality": 95,
                         "full_page": True,
                         "width": 720,
+                        "timeout": int(self.timeout() * 1000),
                     },
                     umo=umo,
                 ),
-                timeout=self.timeout(),
+                timeout=self.timeout() + 5,
             )
+            if not path or not self._valid_image(path):
+                raise RuntimeError("渲染结果不是有效图片")
         except Exception as exc:  # noqa: BLE001 - 出图失败只影响展示
             if self._warned:
                 logger.debug(f"[终末地KB] 出图失败，改用文本：{exc}")
@@ -242,4 +267,4 @@ class CardRenderer:
                 self._warned = True
                 logger.warning(f"[终末地KB] 出图失败，改用文本：{exc}")
             return None
-        return str(path) if path else None
+        return str(path)
