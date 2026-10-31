@@ -89,7 +89,7 @@ python build_index.py --corpus <目录>     # 指定语料目录
 python build_index.py --out <文件>        # 只构建，用于打包发布
 
 # 写入本仓库自己的索引修订号（推荐），插件据此判断更新
-python build_index.py --index-version 1.6.3-r1
+python build_index.py --index-version 1.6.3-r2
 ```
 
 约 30–60 秒，产出 35 MB 左右的 SQLite 文件。
@@ -99,7 +99,7 @@ python build_index.py --index-version 1.6.3-r1
 ```
 data/plugin_data/astrbot_plugin_endfield_kb/index/
 ├─ current.json                          # 指针：当前文件与版本
-├─ endfield_kb-endfield-1.6.3-r1.sqlite3 # 当前索引
+├─ endfield_kb-endfield-1.6.3-r2.sqlite3 # 当前索引
 └─ endfield_kb-*.sqlite3.zip             # 待导入的压缩包（可选）
 ```
 
