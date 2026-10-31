@@ -6,5 +6,5 @@ desc: >-
   默认无需嵌入模型与外部服务，贴整句原文也能命中；可选接入 embedding 做语义检索，或接入 T2I 出图。
 version: v1.4.21
 author: local
-repo: ""
+repo: "https://github.com/lingyun14beta/astrbot_plugin_endfield_kb"
 
