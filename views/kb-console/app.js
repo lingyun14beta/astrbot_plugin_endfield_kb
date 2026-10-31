@@ -649,8 +649,8 @@ async function submitImport(event) {
     els.importStatus.textContent = "请填写下载链接";
     return;
   }
-  if (!/^https?:\/\//i.test(url)) {
-    els.importStatus.textContent = "只支持 http/https 链接";
+  if (!/^https:\/\//i.test(url)) {
+    els.importStatus.textContent = "只支持 https 链接";
     return;
   }
   els.importSubmit.disabled = true;

@@ -77,7 +77,7 @@ https://www.modelscope.cn/api/v1/datasets/lingyun14/astrbot-endfield-kb-index/re
 AstrBot/data/plugin_data/astrbot_plugin_endfield_kb/index/
 ```
 
-然后执行 `zmd 重载`。插件会自动解压、校验、切换；坏文件不会覆盖现有索引。
+然后执行 `/zmd重载`。插件会自动解压、校验、切换；坏文件不会覆盖现有索引。
 
 ### C. 本地构建
 
@@ -196,7 +196,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 
 - 订阅目标是 AstrBot 的 `umo`，所以私聊、群聊、不同平台都能分开订
 - 只有管理员能改订阅：`/zmd订阅`、`/zmd退订`、`/zmd推送状态`
-- 订阅列表写在配置项 `notify_umos` 里，指令写入后会立即保存，也可以在 WebUI 里直接改
+- 订阅列表写在配置项 `notify_group.umos` 里，指令写入后会立即保存，也可以在 WebUI 里直接改
 - 首次运行只记录当前版本，**不发送任何通知**，避免装完就刷屏
 - 订阅只影响之后的变化：当前版本不会补发；某个版本发布时没人订阅，之后订阅也收不到那一条
 - 推送全部失败时最多重试 3 轮（每轮间隔一次检查），仍失败则放弃并记录版本，日志会留 warning/error
@@ -253,7 +253,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 - 渲染失败、超时或没配端点时自动退回文本，不会让检索报错
 - 卡片会先清洗正文：去掉 `Reading/...` 引用串和开头的重复标题/集合名
 - 主题支持 `light` / `dark` / `auto`；`auto` 按服务器本地时间，默认 19:00 到次日 07:00 用深色
-- 默认 5 条、每条最多 500 字；条数、字数、超时都能在配置里改
+- 默认 5 条、每条最多 500 字；输出固定 720 宽 JPEG，条数、字数、超时都能在配置里改
 
 ![检索结果卡片](docs/t2i-card.png)
 

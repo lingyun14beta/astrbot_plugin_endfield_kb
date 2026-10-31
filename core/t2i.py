@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, time
+import time
+import uuid
+from datetime import datetime, time as clock_time
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +79,7 @@ def clean_excerpt(title: str, coll: str, body: str, limit: int = 500) -> str:
     return text
 
 
-def _parse_time(value: str, fallback: time) -> time:
+def _parse_time(value: str, fallback: clock_time) -> clock_time:
     """解析 HH:MM，失败时返回兜底值。"""
     match = HM_RE.match(value or "")
     if not match:
@@ -85,7 +87,7 @@ def _parse_time(value: str, fallback: time) -> time:
     hour, minute = int(match.group(1)), int(match.group(2))
     if not (0 <= hour < 24 and 0 <= minute < 60):
         return fallback
-    return time(hour, minute)
+    return clock_time(hour, minute)
 
 
 def resolve_theme(
@@ -111,8 +113,8 @@ def resolve_theme(
     if choice in {"light", "dark"}:
         return choice
     moment = now or datetime.now()
-    start = _parse_time(dark_from, time(19, 0))
-    end = _parse_time(dark_to, time(7, 0))
+    start = _parse_time(dark_from, clock_time(19, 0))
+    end = _parse_time(dark_to, clock_time(7, 0))
     current = moment.time()
     if start <= end:
         dark = start <= current < end
@@ -216,12 +218,41 @@ class CardRenderer:
             file = Path(str(path))
             if not file.is_file() or file.stat().st_size < 1024:
                 return False
-            head = file.read_bytes()[:8]
+            with file.open("rb") as handle:
+                head = handle.read(8)
         except OSError:
             return False
         return head.startswith(b"\xff\xd8\xff") or head.startswith(
             b"\x89PNG\r\n\x1a\n"
         )
+
+    def _normalized_path(self, path: Any) -> str | None:
+        """裁成 720 宽并统一存成 JPEG，避免端点忽略宽度或后缀不符。"""
+        try:
+            from PIL import Image
+        except ImportError:
+            return str(path) if self._valid_image(path) else None
+        try:
+            with Image.open(str(path)) as image:
+                image.load()
+                width, height = image.size
+                if width > 720:
+                    left = (width - 720) // 2
+                    image = image.crop((left, 0, left + 720, height))
+                out_dir = self.plugin.index_dir / ".t2i"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                now = time.time()
+                for old in out_dir.glob("*.jpg"):
+                    try:
+                        if now - old.stat().st_mtime > 3600:
+                            old.unlink()
+                    except OSError:
+                        pass
+                target = out_dir / f"{uuid.uuid4().hex}.jpg"
+                image.convert("RGB").save(target, "JPEG", quality=95)
+            return str(target)
+        except (OSError, ValueError):
+            return None
 
     async def render(
         self,
@@ -251,8 +282,6 @@ class CardRenderer:
                         "type": "jpeg",
                         "quality": 95,
                         "full_page": True,
-                        "width": 720,
-                        "timeout": int(self.timeout() * 1000),
                     },
                     umo=umo,
                 ),
@@ -260,6 +289,9 @@ class CardRenderer:
             )
             if not path or not self._valid_image(path):
                 raise RuntimeError("渲染结果不是有效图片")
+            normalized = self._normalized_path(path)
+            if not normalized:
+                raise RuntimeError("图片裁切失败")
         except Exception as exc:  # noqa: BLE001 - 出图失败只影响展示
             if self._warned:
                 logger.debug(f"[终末地KB] 出图失败，改用文本：{exc}")
@@ -267,4 +299,4 @@ class CardRenderer:
                 self._warned = True
                 logger.warning(f"[终末地KB] 出图失败，改用文本：{exc}")
             return None
-        return str(path)
+        return normalized
