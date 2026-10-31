@@ -24,6 +24,26 @@ TERM = re.compile(r"\w", re.UNICODE)
 # 索引结构版本：增删列、改语义时加一，插件据此拒绝旧库
 SCHEMA_VERSION = 2
 
+# 游戏导出残留的模板占位符（如 #__time__#、__ltItems__#、$__ltap_to_stamina__$）
+PLACEHOLDER_RE = re.compile(
+    r"(?<![0-9A-Za-z_])[$#]?__[0-9A-Za-z_]+__[#$]?(?![0-9A-Za-z_])"
+)
+PLACEHOLDER_LABELS = {
+    "time": "指定时间",
+    "testimonial": "评价",
+    "gachaLTTicket": "凭证",
+    "gachaWeaponLTTicket": "凭证",
+    "ltItems": "以下物品",
+    "ltap_to_stamina": "若干",
+}
+
+
+def replace_placeholder(match: re.Match[str]) -> str:
+    """把游戏模板占位符换成可读文字，未知占位符用省略号。"""
+    core = match.group(0).strip("#$").strip("_")
+    return PLACEHOLDER_LABELS.get(core, "…")
+
+
 # 整理资料里带 <相关角色>、<image>…</> 这类标记，输出前清掉
 TAG_RE = re.compile(r"<[^<>\n]{1,120}>")
 HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
@@ -243,6 +263,8 @@ def clean_body(text: str) -> str:
     text = HEADING_RE.sub("", text)
     text = BOLD_RE.sub(r"\1", text)
     text = BULLET_RE.sub("· ", text)
+    text = PLACEHOLDER_RE.sub(replace_placeholder, text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
     text = MULTI_NEWLINE_RE.sub("\n\n", text)
     text = strip_refs(text)
     return text.strip()

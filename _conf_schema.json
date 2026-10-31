@@ -44,21 +44,36 @@
   },
   "max_chars": {
     "description": "单次返回字数上限",
-    "hint": "返回给模型的正文总长度上限，越大上下文占用越高。",
+    "hint": "返回给模型的正文总长度上限，越大上下文占用越高；限制在 200-8000。",
     "type": "int",
-    "default": 1800
+    "default": 1800,
+    "slider": {
+      "min": 200,
+      "max": 8000,
+      "step": 100
+    }
   },
   "score_ratio": {
     "description": "相关度阈值（百分比）",
-    "hint": "BM25 分数相对最佳结果的保留比例。越小越严格，只保留明显更相关的条目；越大召回越多。建议 40-60。",
+    "hint": "BM25 分数相对最佳结果的保留比例。越小越严格，只保留明显更相关的条目；越大召回越多。建议 40-60，限制在 1-100。",
     "type": "int",
-    "default": 45
+    "default": 45,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    }
   },
   "rewrite_timeout": {
     "description": "关键词改写超时（秒）",
-    "hint": "超过该时间未返回就放弃改写，直接用原始查询检索。",
+    "hint": "超过该时间未返回就放弃改写，直接用原始查询检索；限制在 3-60。",
     "type": "int",
-    "default": 12
+    "default": 12,
+    "slider": {
+      "min": 3,
+      "max": 60,
+      "step": 1
+    }
   },
   "notify_group": {
     "description": "版本推送",

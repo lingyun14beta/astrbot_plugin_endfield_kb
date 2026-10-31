@@ -266,7 +266,7 @@ class EndfieldKBPlugin(Star):
         if not self.db_path:
             return (
                 "知识库索引尚未就绪。\n"
-                f"请运行 build_index.py，或把索引文件放进 {self.index_dir} 后执行 zmd 重载。"
+                f"请运行 build_index.py，或把索引文件放进 {self.index_dir} 后执行 /zmd重载。"
             )
 
         limit = int(top_k or self.config.get("top_k", 5))
@@ -309,7 +309,7 @@ class EndfieldKBPlugin(Star):
             return (
                 "索引未就绪。\n"
                 f"目录：{self.index_dir}\n"
-                "可运行 build_index.py，或把索引文件放进该目录后执行 zmd 重载。"
+                "可运行 build_index.py，或把索引文件放进该目录后执行 /zmd重载。"
             )
         size = self.db_path.stat().st_size / 1e6
         release = self.meta.get("release") or "未知"
@@ -352,22 +352,24 @@ class EndfieldKBPlugin(Star):
         if query in legacy:
             yield event.plain_result(f"指令已拆分，请改用 /{legacy[query]}")
             return
-        if self.t2i.enabled():
+        if self.t2i.enabled() and self.db_path:
             started = time.perf_counter()
             hits = await self.retriever.query(query, top_k=self.t2i.max_hits())
             elapsed_ms = round((time.perf_counter() - started) * 1000)
-            if hits:
-                yield event.plain_result("正在生成卡片…")
-                path = await self.t2i.render(
-                    hits, query, elapsed_ms, event.unified_msg_origin
-                )
-                if path:
-                    yield event.image_result(path)
-                    return
+            if not hits:
                 yield event.plain_result(
-                    self.retriever.format_for_llm(hits, query)
+                    f"没有检索到与「{query}」相关的内容。可以换更具体的专名或原文片段再试。"
                 )
                 return
+            yield event.plain_result("正在生成卡片…")
+            path = await self.t2i.render(
+                hits, query, elapsed_ms, event.unified_msg_origin
+            )
+            if path:
+                yield event.image_result(path)
+                return
+            yield event.plain_result(self.retriever.format_for_llm(hits, query))
+            return
         yield event.plain_result(await self.search_text(query, 5))
 
     @filter.command("zmd文字", desc="检索并以文本返回，不经过出图")

@@ -90,6 +90,10 @@ class Retriever:
         if provider is None:
             return ""
         try:
+            timeout = float(self.config.get("rewrite_timeout", 12) or 12)
+        except (TypeError, ValueError):
+            timeout = 12.0
+        try:
             response = await asyncio.wait_for(
                 provider.text_chat(
                     prompt=REWRITE_PROMPT.format(
@@ -98,7 +102,7 @@ class Retriever:
                     system_prompt=REWRITE_SYSTEM,
                     contexts=[],
                 ),
-                timeout=float(self.config.get("rewrite_timeout", 12)),
+                timeout=max(3.0, min(timeout, 60.0)),
             )
         except Exception as exc:  # noqa: BLE001 - 超时或接口错误都退回原文查询
             logger.debug(f"[终末地KB] 关键词改写失败：{exc}")
@@ -259,11 +263,14 @@ class Retriever:
         """先 BM25，再按需融合语义结果。"""
         if self.db_path is None:
             return []
-        ratio = (
-            score_ratio
-            if score_ratio is not None
-            else float(self.config.get("score_ratio", 45)) / 100
-        )
+        if score_ratio is not None:
+            ratio = score_ratio
+        else:
+            try:
+                ratio = float(self.config.get("score_ratio", 45) or 45) / 100
+            except (TypeError, ValueError):
+                ratio = 0.45
+        ratio = max(0.01, min(ratio, 1.0))
         hits = search(self.db_path, query, top_k=top_k, score_ratio=ratio, kinds=kinds)
         if self.semantic_enabled():
             hits = self.fuse(
@@ -273,7 +280,11 @@ class Retriever:
 
     def format_for_llm(self, hits: list[Hit], query: str) -> str:
         """把命中整理成模型可读的文本。"""
-        max_chars = int(self.config.get("max_chars", 1800))
+        try:
+            max_chars = int(self.config.get("max_chars", 1800) or 1800)
+        except (TypeError, ValueError):
+            max_chars = 1800
+        max_chars = max(200, min(max_chars, 8000))
         lines = [f"检索「{query}」命中 {len(hits)} 条（本地 PRTS 终末地语料）："]
         used = 0
         for index, hit in enumerate(hits, 1):
