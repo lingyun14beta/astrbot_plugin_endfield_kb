@@ -128,7 +128,17 @@ class CardRenderer:
 
     def __init__(self, plugin: Any) -> None:
         self.plugin = plugin
-        self._warned = False
+        self._last_warn = 0.0
+        self.last_error = ""
+
+    def _log_failure(self, logger: Any, message: str) -> None:
+        """失败日志最多每 5 分钟 warning 一次，其余降为 debug。"""
+        now = time.time()
+        if now - self._last_warn > 300:
+            self._last_warn = now
+            logger.warning(message)
+        else:
+            logger.debug(message)
 
     def conf(self) -> dict[str, Any]:
         """读取出图配置。"""
@@ -267,9 +277,8 @@ class CardRenderer:
         try:
             template = TEMPLATE_PATH.read_text(encoding="utf-8")
         except OSError as exc:
-            if not self._warned:
-                self._warned = True
-                logger.warning(f"[终末地KB] 出图模板读取失败：{exc}")
+            self.last_error = f"模板读取失败：{exc}"
+            self._log_failure(logger, f"[终末地KB] 出图模板读取失败：{exc}")
             return None
 
         try:
@@ -293,10 +302,10 @@ class CardRenderer:
             if not normalized:
                 raise RuntimeError("图片裁切失败")
         except Exception as exc:  # noqa: BLE001 - 出图失败只影响展示
-            if self._warned:
-                logger.debug(f"[终末地KB] 出图失败，改用文本：{exc}")
-            else:
-                self._warned = True
-                logger.warning(f"[终末地KB] 出图失败，改用文本：{exc}")
+            self.last_error = str(exc) or exc.__class__.__name__
+            self._log_failure(
+                logger, f"[终末地KB] 出图失败，改用文本：{self.last_error}"
+            )
             return None
+        self.last_error = ""
         return normalized

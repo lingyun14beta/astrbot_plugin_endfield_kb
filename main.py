@@ -368,6 +368,7 @@ class EndfieldKBPlugin(Star):
             if path:
                 yield event.image_result(path)
                 return
+            yield event.plain_result("出图失败，已改用文本。")
             yield event.plain_result(self.retriever.format_for_llm(hits, query))
             return
         yield event.plain_result(await self.search_text(query, 5))
