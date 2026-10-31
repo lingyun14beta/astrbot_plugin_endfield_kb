@@ -121,5 +121,91 @@
         "default": 30
       }
     }
+  },
+  "t2i_group": {
+    "description": "检索结果出图",
+    "hint": "开启后 /zmd 的查询结果渲染成 720 宽的图片；渲染失败会自动退回文本。卡片内容会发送到 AstrBot 配置的 T2I 服务（默认官方端点），/zmd文字 始终返回文本。",
+    "type": "object",
+    "items": {
+      "enable": {
+        "description": "启用出图",
+        "hint": "只影响 /zmd 查询；状态类指令不受影响。",
+        "type": "bool",
+        "default": false
+      },
+      "theme": {
+        "description": "卡片主题",
+        "hint": "自动 = 按服务器本地时间在浅色与深色之间切换。",
+        "type": "string",
+        "options": ["light", "dark", "auto"],
+        "labels": ["浅色", "深色", "自动"],
+        "default": "auto",
+        "condition": {
+          "enable": true
+        }
+      },
+      "dark_from": {
+        "description": "夜间开始",
+        "hint": "HH:MM，到这个时间之后用深色；默认 19:00。",
+        "type": "string",
+        "default": "19:00",
+        "condition": {
+          "enable": true,
+          "theme": "auto"
+        }
+      },
+      "dark_to": {
+        "description": "夜间结束",
+        "hint": "HH:MM，到这个时间切回浅色；默认 07:00。",
+        "type": "string",
+        "default": "07:00",
+        "condition": {
+          "enable": true,
+          "theme": "auto"
+        }
+      },
+      "max_hits": {
+        "description": "结果条数",
+        "hint": "1-8，默认 5；条数越多图越高。",
+        "type": "int",
+        "default": 5,
+        "slider": {
+          "min": 1,
+          "max": 8,
+          "step": 1
+        },
+        "condition": {
+          "enable": true
+        }
+      },
+      "excerpt_chars": {
+        "description": "每条摘要字数上限",
+        "hint": "默认 500；语料平均每篇约 210 字，多数条目会展示全文。",
+        "type": "int",
+        "default": 500,
+        "slider": {
+          "min": 500,
+          "max": 2000,
+          "step": 100
+        },
+        "condition": {
+          "enable": true
+        }
+      },
+      "timeout": {
+        "description": "渲染超时（秒）",
+        "hint": "超过后放弃出图，直接返回文本。",
+        "type": "int",
+        "default": 20,
+        "slider": {
+          "min": 5,
+          "max": 60,
+          "step": 5
+        },
+        "condition": {
+          "enable": true
+        }
+      }
+    }
   }
 }

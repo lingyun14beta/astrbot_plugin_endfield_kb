@@ -129,7 +129,8 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 
 | 指令 | 作用 |
 |---|---|
-| `/zmd <关键词>` | 检索，可直接贴原文片段 |
+| `/zmd <关键词>` | 检索，可直接贴原文片段；开启出图时返回卡片 |
+| `/zmd文字 <关键词>` | 强制文本结果，不经过出图 |
 | `/zmd` | 不带关键词时显示索引状态 |
 | `/zmd状态` | 篇数、语料版本、索引版本与体积 |
 | `/zmd重载` | 重新扫描本地索引 |
@@ -244,6 +245,28 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `semantic_group.weight` | 100 | 向量那一路的融合权重，100 为等权 |
 | `semantic_group.candidates` | 30 | 向量召回条数 |
 
+## 检索出图（可选）
+
+默认关闭。开启后 `/zmd <词>` 会先把命中结果渲染成一张 **720 宽的卡片**再发送；`/zmd文字 <词>` 始终返回文本。
+
+- 卡片走 AstrBot 的 T2I 服务（默认官方端点，也可在 AstrBot 里配 `t2i_endpoint`），**查询词与摘要会发送到该服务**
+- 渲染失败、超时或没配端点时自动退回文本，不会让检索报错
+- 卡片会先清洗正文：去掉 `Reading/...` 引用串和开头的重复标题/集合名
+- 主题支持 `light` / `dark` / `auto`；`auto` 按服务器本地时间，默认 19:00 到次日 07:00 用深色
+- 默认 5 条、每条最多 500 字；条数、字数、超时都能在配置里改
+
+![检索结果卡片](docs/t2i-card.png)
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `t2i_group.enable` | false | 开启后才显示下面的选项 |
+| `t2i_group.theme` | auto | 浅色 / 深色 / 自动 |
+| `t2i_group.dark_from` | 19:00 | 自动模式的夜间开始 |
+| `t2i_group.dark_to` | 07:00 | 自动模式的夜间结束 |
+| `t2i_group.max_hits` | 5 | 结果条数 1–8 |
+| `t2i_group.excerpt_chars` | 500 | 每条摘要上限 500–2000 |
+| `t2i_group.timeout` | 20 | 渲染超时（秒） |
+
 ## 后端接口
 
 | 路由 | 方法 | 用途 |
@@ -273,8 +296,11 @@ core/
   updater.py         索引安装、清单比对、下载与校验
   retrieval.py       关键词改写、BM25 + 语义融合、格式化
   pusher.py          版本推送的订阅、定时检查、发送
+  t2i.py             出图数据清洗、主题判定与 T2I 调用
   webapi.py          控制台后端接口
   versioning.py      版本号、下载源、旧配置修复
+templates/
+  zmd_card.html      检索结果卡片的 Jinja2 模板
 endfield_kb.py       索引结构、清洗、FTS5 检索
 index_store.py       索引文件校验、安装与目录管理
 index_fetch.py       清单与下载的 HTTP 封装

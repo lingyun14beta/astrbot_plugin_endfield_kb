@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import field
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from . import semantic
 from .core import versioning, webapi
 from .core.pusher import Pusher
 from .core.retrieval import Retriever
+from .core.t2i import CardRenderer
 from .core.updater import Updater
 from .endfield_kb import SCHEMA_VERSION
 from .index_store import default_index_dir, read_current, resolve
@@ -35,6 +37,7 @@ PLUGIN_DIR = Path(__file__).parent
 COMMAND_HELP = (
     "终末地知识库 · 指令\n"
     "  /zmd <关键词>   检索，可直接贴原文片段\n"
+    "  /zmd文字 <词>   强制文本结果，不经过出图\n"
     "  /zmd            不带关键词，显示索引状态\n"
     "  /zmd状态        索引篇数、语料版本与体积\n"
     "  /zmd重载        重新扫描本地索引\n"
@@ -101,6 +104,7 @@ class EndfieldKBPlugin(Star):
         self.updater = Updater(self)
         self.retriever = Retriever(self)
         self.pusher = Pusher(self)
+        self.t2i = CardRenderer(self)
         self._vector_task: asyncio.Task | None = None
         self._load_index()
         context.register_web_api(
@@ -347,6 +351,25 @@ class EndfieldKBPlugin(Star):
         }
         if query in legacy:
             yield event.plain_result(f"指令已拆分，请改用 /{legacy[query]}")
+            return
+        if self.t2i.enabled():
+            started = time.perf_counter()
+            hits = await self.retriever.query(query, top_k=self.t2i.max_hits())
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            if hits:
+                path = await self.t2i.render(
+                    hits, query, elapsed_ms, event.unified_msg_origin
+                )
+                if path:
+                    yield event.image_result(path)
+                    return
+        yield event.plain_result(await self.search_text(query, 5))
+
+    @filter.command("zmd文字", desc="检索并以文本返回，不经过出图")
+    async def zmd_text(self, event: AstrMessageEvent):
+        query = self._command_args(event)
+        if not query:
+            yield event.plain_result("用法：/zmd文字 <关键词>")
             return
         yield event.plain_result(await self.search_text(query, 5))
 

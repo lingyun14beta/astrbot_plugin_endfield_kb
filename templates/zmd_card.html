@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    --signal: #fffa00;
+    --font-cjk: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+    --font-display: "Arial Narrow", "Roboto Condensed", var(--font-cjk);
+    --font-mono: "IBM Plex Mono", Consolas, monospace;
+  }
+  body {
+    --ink: #171717;
+    --paper: #f4f2ec;
+    --rule: color-mix(in srgb, var(--ink) 10%, transparent);
+    --rule-strong: color-mix(in srgb, var(--ink) 30%, transparent);
+    --muted: color-mix(in srgb, var(--ink) 46%, transparent);
+    --kind: color-mix(in srgb, var(--ink) 62%, transparent);
+    --excerpt: color-mix(in srgb, var(--ink) 74%, transparent);
+    width: 720px;
+    font-family: var(--font-cjk);
+    -webkit-font-smoothing: antialiased;
+  }
+  body.theme-dark {
+    --ink: #ece8dc;
+    --paper: #141414;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); }
+
+  .page { position: relative; width: 720px; padding: 44px 48px 36px; }
+
+  .mark { position: absolute; width: 10px; height: 10px; border: 0 solid var(--rule-strong); }
+  .mark.tl { top: 20px; left: 20px; border-top-width: 1px; border-left-width: 1px; }
+  .mark.tr { top: 20px; right: 20px; border-top-width: 1px; border-right-width: 1px; }
+  .mark.bl { bottom: 20px; left: 20px; border-bottom-width: 1px; border-left-width: 1px; }
+  .mark.br { bottom: 20px; right: 20px; border-bottom-width: 1px; border-right-width: 1px; }
+
+  .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .top b { color: var(--ink); font-weight: 600; }
+
+  .head { margin-block-start: 40px; }
+  .kicker {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.26em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .query {
+    font-family: var(--font-display); font-size: 28px; line-height: 1.26;
+    font-weight: 600; letter-spacing: -0.012em; margin: 8px 0 0;
+  }
+  .accent { width: 52px; height: 2px; background: var(--signal); margin-block-start: 16px; }
+  .meta {
+    display: flex; gap: 20px; margin-block-start: 14px;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 500; }
+
+  .list-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-block-start: 36px; padding-block-end: 9px;
+    border-block-end: 1px solid var(--rule-strong);
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .list-head b { color: var(--ink); font-weight: 500; }
+
+  .row {
+    display: grid; grid-template-columns: 32px minmax(0, 1fr) 50px; gap: 12px;
+    padding: 22px 0 20px; border-block-end: 1px solid var(--rule);
+  }
+  .rail { padding-block-start: 2px; }
+  .idx { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; color: var(--muted); }
+  .kind {
+    margin-block-start: 6px; font-family: var(--font-mono); font-size: 8px;
+    letter-spacing: 0.16em; color: var(--kind);
+  }
+  h2 { margin: 0; font-size: 14.5px; line-height: 1.5; font-weight: 500; }
+  .coll {
+    margin: 5px 0 0; font-family: var(--font-mono); font-size: 8px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  }
+  .excerpt {
+    margin: 9px 0 0; max-width: 540px; font-size: 12px; line-height: 1.9;
+    color: var(--excerpt); letter-spacing: 0.01em;
+  }
+  .side {
+    text-align: right; font-family: var(--font-mono); font-size: 8px;
+    letter-spacing: 0.1em; color: var(--muted); padding-block-start: 3px;
+  }
+
+  .foot {
+    display: flex; justify-content: space-between; gap: 20px;
+    margin-block-start: 26px; padding-block-start: 11px;
+    border-block-start: 1px solid var(--rule);
+    font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .foot .right { text-align: right; letter-spacing: 0.03em; }
+</style>
+</head>
+<body class="{{ theme_class }}">
+  <main class="page">
+    <span class="mark tl"></span><span class="mark tr"></span>
+    <span class="mark bl"></span><span class="mark br"></span>
+
+    <div class="top">
+      <span><b>EF-KB</b> / 02 · LOCAL ARCHIVE</span>
+      <span>ENDFIELD {{ corpus_version | e }}</span>
+    </div>
+
+    <header class="head">
+      <p class="kicker">QUERY</p>
+      <h1 class="query">{{ query | e }}</h1>
+      <div class="accent"></div>
+      <div class="meta">
+        <span>命中 <b>{{ count }}</b></span>
+        <span>耗时 <b>{{ elapsed_ms }}</b> ms</span>
+        <span>索引 <b>{{ index_version | e }}</b></span>
+      </div>
+    </header>
+
+    <div class="list-head">
+      <span>RESULTS / <b>{{ "%02d"|format(count) }}</b></span>
+      <span>BM25 · 本地语料</span>
+    </div>
+
+    <section class="list">
+      {% for hit in hits %}
+      <article class="row">
+        <div class="rail">
+          <div class="idx">{{ hit.index }}</div>
+          <div class="kind">{{ hit.kind | e }}</div>
+        </div>
+        <div class="body">
+          <h2>{{ hit.title | e }}</h2>
+          <p class="coll">{{ hit.coll | e }}</p>
+          <p class="excerpt">{{ hit.excerpt | e }}</p>
+        </div>
+        <div class="side">{% if hit.refs %}REF · {{ hit.refs }}{% endif %}</div>
+      </article>
+      {% endfor %}
+    </section>
+
+    <footer class="foot">
+      <span>语料 {{ corpus | e }} · 索引 {{ index_version | e }} · 出处 {{ refs_total | e }} 处</span>
+      <span class="right">标注“整理”的条目为二次整理资料，引用请以“原文”为准。</span>
+    </footer>
+  </main>
+</body>
+</html>
