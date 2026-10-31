@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-MAX_BYTES = 256 * 1024 * 1024
+MAX_BYTES = 100 * 1024 * 1024
 USER_AGENT = "astrbot-plugin-endfield-kb/1.2"
 
 
@@ -68,7 +68,7 @@ def _fetch(url: str, timeout: float) -> bytes:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
-        raise FetchError("文件超过 256 MB 上限")
+        raise FetchError("文件超过 100 MB 上限")
     return data
 
 
@@ -86,7 +86,7 @@ def _fetch_public(url: str, timeout: float) -> bytes:
     with opener.open(request, timeout=timeout) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
-        raise FetchError("文件超过 256 MB 上限")
+        raise FetchError("文件超过 100 MB 上限")
     return data
 
 

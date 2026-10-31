@@ -22,6 +22,7 @@ from pathlib import Path
 
 INDEX_GLOB = "endfield_kb*.sqlite3"
 CURRENT_NAME = "current.json"
+MAX_UNPACKED = 512 * 1024 * 1024
 
 
 def default_index_dir(plugin_dir: Path) -> Path:
@@ -123,8 +124,26 @@ def list_candidates(index_dir: Path) -> list[Path]:
     )
 
 
+def _copy_limited(src, dst, limit: int) -> None:
+    """流式复制并限制解压后的总字节数。"""
+    total = 0
+    while True:
+        chunk = src.read(1024 * 1024)
+        if not chunk:
+            return
+        total += len(chunk)
+        if total > limit:
+            raise IndexValidationError(
+                f"解压后超过 {limit // (1024 * 1024)} MB 上限"
+            )
+        dst.write(chunk)
+
+
 def decompress(path: Path, work_dir: Path) -> Path:
-    """把 .zip / .gz 解到工作目录，返回其中的 sqlite 文件。"""
+    """把 .zip / .gz 解到工作目录，返回其中的 sqlite 文件。
+
+    解压过程有 512 MB 上限，防止压缩炸弹写满磁盘。
+    """
     work_dir.mkdir(parents=True, exist_ok=True)
     if path.suffix == ".zip":
         with zipfile.ZipFile(path) as zf:
@@ -132,14 +151,27 @@ def decompress(path: Path, work_dir: Path) -> Path:
             if not names:
                 raise IndexValidationError("压缩包里没有 .sqlite3 文件")
             member = names[0]
+            info = zf.getinfo(member)
+            if info.file_size > MAX_UNPACKED:
+                raise IndexValidationError(
+                    f"解压后超过 {MAX_UNPACKED // (1024 * 1024)} MB 上限"
+                )
             out = work_dir / Path(member).name
-            with zf.open(member) as src, out.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+            try:
+                with zf.open(member) as src, out.open("wb") as dst:
+                    _copy_limited(src, dst, MAX_UNPACKED)
+            except BaseException:
+                out.unlink(missing_ok=True)
+                raise
             return out
     if path.suffix == ".gz":
         out = work_dir / path.stem
-        with gzip.open(path, "rb") as src, out.open("wb") as dst:
-            shutil.copyfileobj(src, dst)
+        try:
+            with gzip.open(path, "rb") as src, out.open("wb") as dst:
+                _copy_limited(src, dst, MAX_UNPACKED)
+        except BaseException:
+            out.unlink(missing_ok=True)
+            raise
         return out
     raise IndexValidationError(f"不支持的压缩格式：{path.name}")
 
