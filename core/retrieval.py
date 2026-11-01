@@ -230,6 +230,11 @@ class Retriever:
             except (TypeError, ValueError):
                 rpm = 0
             rpm = max(0, min(rpm, 6000))
+            dtype = str(
+                self.semantic_conf().get("checkpoint_dtype") or "float16"
+            ).lower()
+            if dtype not in {"float16", "float32"}:
+                dtype = "float16"
             try:
                 meta = await semantic.build(
                     self.db_path,
@@ -243,6 +248,7 @@ class Retriever:
                     ),
                     rpm=rpm,
                     error_log=lambda item: logger.error(f"[终末地KB] {item}"),
+                    checkpoint_dtype=dtype,
                 )
                 self._semantic_cache = None
                 text = (

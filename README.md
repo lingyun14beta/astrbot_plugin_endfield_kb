@@ -247,6 +247,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 | `semantic_group.weight` | 100 | 向量那一路的融合权重，100 为等权 |
 | `semantic_group.candidates` | 30 | 向量召回条数 |
 | `semantic_group.rpm` | 0 | 构建时每分钟请求上限；0 为不限，429 会指数退避 |
+| `semantic_group.checkpoint_dtype` | float16 | 检查点精度：float16 省空间 / float32 更高精度 |
 
 ## 检索出图（可选）
 

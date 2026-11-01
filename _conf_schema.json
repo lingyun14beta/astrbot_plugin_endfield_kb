@@ -145,6 +145,20 @@
           "max": 600,
           "step": 10
         }
+      },
+      "checkpoint_dtype": {
+        "description": "检查点精度",
+        "hint": "float16 省一半磁盘，float32 更高精度；最终向量固定 float16。",
+        "type": "string",
+        "default": "float16",
+        "options": [
+          "float16",
+          "float32"
+        ],
+        "labels": [
+          "float16（省空间）",
+          "float32（更高精度）"
+        ]
       }
     }
   },

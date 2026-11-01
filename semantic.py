@@ -175,6 +175,7 @@ def _save_partial(
     ids: list[str],
     hashes: list[str],
     vectors: list[list[float]],
+    dtype: str = "float16",
 ) -> None:
     """把一小段编码结果原子写入分片目录，供中断后续跑。"""
     if np is None or not ids:
@@ -184,12 +185,13 @@ def _save_partial(
     seq = len(list(part_dir.glob("part-*.npz"))) + 1
     target = part_dir / f"part-{seq:06d}.npz"
     tmp = part_dir / f"part-{seq:06d}.npz.tmp"
+    np_dtype = np.float32 if dtype == "float32" else np.float16
     with tmp.open("wb") as handle:
         np.savez(
             handle,
             ids=np.array(ids, dtype=str),
             hashes=np.array(hashes, dtype=str),
-            vectors=np.array(vectors, dtype=np.float32),
+            vectors=np.array(vectors, dtype=np_dtype),
             model=np.array(model),
             dim=np.array(dim),
         )
@@ -355,6 +357,7 @@ async def build(
     index_version: str = "",
     rpm: int = 0,
     error_log: LogFn | None = None,
+    checkpoint_dtype: str = "float16",
 ) -> dict[str, Any]:
     """把索引里的文档编码成向量并落盘；默认只编码新增或内容变化的文档。
 
@@ -367,6 +370,7 @@ async def build(
         index_version: 这份向量对应的语料版本，用于识别索引更新后的失配。
         rpm: 每分钟最多请求数；0 表示不限制。
         error_log: 限流等错误日志；默认复用 log。
+        checkpoint_dtype: 检查点精度，float16 或 float32。
 
     Returns:
         含 count、dim、model、built_at、index_version、reused、added 的元信息。
@@ -452,6 +456,7 @@ async def build(
                     [ids[need[position]] for position in positions],
                     [hashes[need[position]] for position in positions],
                     part_vectors,
+                    checkpoint_dtype,
                 )
             except OSError as exc:
                 (error_log or log)(f"检查点写入失败：{exc}")
