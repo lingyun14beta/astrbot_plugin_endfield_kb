@@ -389,19 +389,15 @@ class EndfieldKBPlugin(Star):
     async def zmd_help(self, event: AstrMessageEvent):
         yield event.plain_result(COMMAND_HELP)
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd重载", desc="重新扫描本地索引文件（仅管理员）")
     async def zmd_reload(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能重载索引。")
-            return
         self._load_index()
         yield event.plain_result("索引已重载。\n\n" + self._status_text())
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd更新", desc="检查并安装最新索引（仅管理员）")
     async def zmd_update(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能更新索引。")
-            return
         yield event.plain_result("正在检查并下载更新…")
         try:
             result = await self.updater.apply_update()
@@ -419,32 +415,24 @@ class EndfieldKBPlugin(Star):
         else:
             yield event.plain_result(result.get("message") or "更新失败")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd订阅", desc="把当前会话加入版本推送（仅管理员）")
     async def zmd_subscribe(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能修改推送订阅。")
-            return
         yield event.plain_result(self.pusher.subscribe(event.unified_msg_origin))
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd退订", desc="把当前会话移出版本推送（仅管理员）")
     async def zmd_unsubscribe(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能修改推送订阅。")
-            return
         yield event.plain_result(self.pusher.unsubscribe(event.unified_msg_origin))
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd推送状态", desc="查看版本推送的订阅与最近检查时间")
     async def zmd_push_status(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能查看推送状态。")
-            return
         yield event.plain_result(self.pusher.status_text())
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd向量", desc="用嵌入模型构建语义索引（仅管理员）")
     async def zmd_vectors(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能构建向量索引。")
-            return
         if self.db_path is None:
             yield event.plain_result("索引还没就绪，先安装或构建索引。")
             return
@@ -466,11 +454,9 @@ class EndfieldKBPlugin(Star):
             "只需要编码新增或有改动的文档，可能要几分钟，完成后在这里通知。"
         )
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("zmd向量状态", desc="查看语义索引与可用的嵌入模型（仅管理员）")
     async def zmd_vector_status(self, event: AstrMessageEvent):
-        if not event.is_admin():
-            yield event.plain_result("只有管理员能查看向量状态。")
-            return
         conf = self.retriever.semantic_conf()
         meta = semantic.read_meta(self.retriever.semantic_dir())
         providers = semantic.list_providers(self.context)
