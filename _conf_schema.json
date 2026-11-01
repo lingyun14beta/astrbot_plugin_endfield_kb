@@ -134,6 +134,17 @@
         "hint": "先取这么多向量近邻，再与 BM25 融合排序；越大越慢。",
         "type": "int",
         "default": 30
+      },
+      "rpm": {
+        "description": "构建限速（RPM）",
+        "hint": "构建向量时每分钟最多请求数；0 表示不限制。遇到 429 会指数退避重试并记录 error 日志。",
+        "type": "int",
+        "default": 0,
+        "slider": {
+          "min": 0,
+          "max": 600,
+          "step": 10
+        }
       }
     }
   },

@@ -226,6 +226,11 @@ class Retriever:
             text = "向量构建失败：索引尚未就绪"
         else:
             try:
+                rpm = int(self.semantic_conf().get("rpm", 0) or 0)
+            except (TypeError, ValueError):
+                rpm = 0
+            rpm = max(0, min(rpm, 6000))
+            try:
                 meta = await semantic.build(
                     self.db_path,
                     self.semantic_dir(),
@@ -236,6 +241,8 @@ class Retriever:
                         or self.plugin.local_release
                         or ""
                     ),
+                    rpm=rpm,
+                    error_log=lambda item: logger.error(f"[终末地KB] {item}"),
                 )
                 self._semantic_cache = None
                 text = (

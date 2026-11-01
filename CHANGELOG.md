@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.24
+
+- 向量构建支持 RPM 限速（`semantic_group.rpm`，0 为不限）；遇到 429 指数退避重试并写 error 日志
+
 ## v1.4.23
 
 - 插件作者改为 `lingyun`

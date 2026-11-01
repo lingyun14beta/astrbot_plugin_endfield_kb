@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import random
 import sqlite3
 import time
 from pathlib import Path
@@ -137,31 +138,105 @@ def _cleanup_tmp(out_dir: Path) -> None:
             pass
 
 
+REQUEST_BATCH = 16
+REQUEST_TIMEOUT = 120
+MAX_RETRIES = 5
+
+
+class _RateLimiter:
+    """按每分钟请求数把调用均匀排开。"""
+
+    def __init__(self, rpm: int) -> None:
+        self.interval = 60.0 / rpm if rpm > 0 else 0.0
+        self._next = 0.0
+        self._lock = asyncio.Lock()
+
+    async def wait(self) -> None:
+        """等到下一个可用时隙；rpm<=0 时直接返回。"""
+        if self.interval <= 0:
+            return
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            delay = self._next - now
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._next = max(now, self._next) + self.interval
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """判断异常是否为 429/限流。"""
+    for attr in ("status_code", "code"):
+        if getattr(exc, attr, None) == 429:
+            return True
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) == 429:
+        return True
+    text = str(exc).lower()
+    return (
+        "429" in text
+        or "too many requests" in text
+        or "rate limit" in text
+        or "rate_limit" in text
+    )
+
+
+async def _embed_request(
+    provider: Any,
+    batch: list[str],
+    limiter: _RateLimiter,
+    error_log: LogFn,
+    start: int,
+) -> list[list[float]]:
+    """编码一个请求批次；遇到 429 指数退避重试。"""
+    attempt = 0
+    while True:
+        await limiter.wait()
+        try:
+            part = await asyncio.wait_for(
+                provider.get_embeddings(batch), timeout=REQUEST_TIMEOUT
+            )
+            return part
+        except asyncio.TimeoutError as exc:
+            raise SemanticError(
+                f"编码第 {start + 1}–{start + len(batch)} 篇超时"
+                f"（{REQUEST_TIMEOUT} 秒）"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - 统一包装成模块异常
+            if not _is_rate_limit(exc):
+                raise SemanticError(
+                    f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}"
+                ) from exc
+            if attempt >= MAX_RETRIES:
+                raise SemanticError(
+                    f"编码第 {start + 1}–{start + len(batch)} 篇持续触发限流（429），"
+                    f"已重试 {MAX_RETRIES} 次"
+                ) from exc
+            attempt += 1
+            delay = min(60.0, 2.0**attempt) + random.uniform(0, 1)
+            error_log(
+                f"嵌入接口 429，第 {attempt}/{MAX_RETRIES} 次重试，"
+                f"等待 {delay:.1f} 秒"
+            )
+            await asyncio.sleep(delay)
+
+
 async def _embed_batches(
     provider: Any,
     texts: list[str],
     log: LogFn,
     dim: int,
+    rpm: int = 0,
+    error_log: LogFn | None = None,
 ) -> tuple[dict[int, list[float]], int]:
-    """把待编码文本分批送进模型，返回下标到向量的映射与维度。"""
+    """把待编码文本按 16 篇一个请求编码，支持 RPM 限速与 429 退避。"""
     vectors: dict[int, list[float]] = {}
-    chunk = 256
     total = len(texts)
-    for start in range(0, total, chunk):
-        batch = texts[start : start + chunk]
-        try:
-            part = await asyncio.wait_for(
-                provider.get_embeddings_batch(batch, batch_size=16, tasks_limit=2),
-                timeout=600,
-            )
-        except asyncio.TimeoutError as exc:
-            raise SemanticError(
-                f"编码第 {start + 1}–{start + len(batch)} 篇超时（600 秒）"
-            ) from exc
-        except Exception as exc:  # noqa: BLE001 - 统一包装成模块异常
-            raise SemanticError(
-                f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}"
-            ) from exc
+    limiter = _RateLimiter(rpm)
+    report = error_log or log
+    for start in range(0, total, REQUEST_BATCH):
+        batch = texts[start : start + REQUEST_BATCH]
+        part = await _embed_request(provider, batch, limiter, report, start)
         if len(part) != len(batch):
             raise SemanticError("模型返回的向量数量与输入不一致")
         if dim <= 0:
@@ -170,7 +245,9 @@ async def _embed_batches(
             if len(vector) != dim:
                 raise SemanticError("模型返回的向量维度不一致")
             vectors[start + offset] = vector
-        log(f"已编码 {min(start + chunk, total)}/{total}")
+        done = min(start + REQUEST_BATCH, total)
+        if done % 256 == 0 or done == total:
+            log(f"已编码 {done}/{total}")
     return vectors, dim
 
 
@@ -181,6 +258,8 @@ async def build(
     log: LogFn = print,
     incremental: bool = True,
     index_version: str = "",
+    rpm: int = 0,
+    error_log: LogFn | None = None,
 ) -> dict[str, Any]:
     """把索引里的文档编码成向量并落盘；默认只编码新增或内容变化的文档。
 
@@ -191,6 +270,8 @@ async def build(
         log: 进度输出函数。
         incremental: 是否复用上次的向量；模型或维度变化时自动全量。
         index_version: 这份向量对应的语料版本，用于识别索引更新后的失配。
+        rpm: 每分钟最多请求数；0 表示不限制。
+        error_log: 限流等错误日志；默认复用 log。
 
     Returns:
         含 count、dim、model、built_at、index_version、reused、added 的元信息。
@@ -243,7 +324,12 @@ async def build(
     new_vectors: dict[int, list[float]] = {}
     if need:
         new_vectors, dim = await _embed_batches(
-            provider, [texts[index] for index in need], log, dim
+            provider,
+            [texts[index] for index in need],
+            log,
+            dim,
+            rpm=rpm,
+            error_log=error_log,
         )
         new_vectors = {need[offset]: vec for offset, vec in new_vectors.items()}
     elif not reuse:
