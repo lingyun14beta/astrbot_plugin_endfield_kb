@@ -28,6 +28,7 @@ VECTOR_NAME = "semantic_vectors.npy"
 IDS_NAME = "semantic_ids.json"
 DOCS_NAME = "semantic_docs.json"
 META_NAME = "semantic_meta.json"
+PARTIAL_DIR = "semantic_partial"
 
 # 单条文档送进模型的最大字符数；语料平均 210 字，长档案截断即可
 MAX_CHARS = 800
@@ -138,6 +139,79 @@ def _cleanup_tmp(out_dir: Path) -> None:
             pass
 
 
+def _load_partial(
+    out_dir: Path, model: str, dim: int
+) -> tuple[dict[str, list[float]], dict[str, str], int]:
+    """读取上次中断留下的分片进度。"""
+    part_dir = out_dir / PARTIAL_DIR
+    if np is None or not part_dir.is_dir():
+        return {}, {}, 0
+    vectors: dict[str, list[float]] = {}
+    hashes: dict[str, str] = {}
+    for path in sorted(part_dir.glob("part-*.npz")):
+        try:
+            with np.load(path, allow_pickle=False) as data:
+                if str(data["model"].item()) != model:
+                    continue
+                part_dim = int(data["dim"].item())
+                if dim > 0 and part_dim != dim:
+                    continue
+                ids = [str(item) for item in data["ids"].tolist()]
+                part_hashes = [str(item) for item in data["hashes"].tolist()]
+                matrix = data["vectors"].astype(np.float32)
+        except (OSError, ValueError, KeyError):
+            continue
+        for index, doc_id in enumerate(ids):
+            vectors[doc_id] = matrix[index]
+            hashes[doc_id] = part_hashes[index]
+        dim = part_dim
+    return vectors, hashes, dim
+
+
+def _save_partial(
+    out_dir: Path,
+    model: str,
+    dim: int,
+    ids: list[str],
+    hashes: list[str],
+    vectors: list[list[float]],
+) -> None:
+    """把一小段编码结果原子写入分片目录，供中断后续跑。"""
+    if np is None or not ids:
+        return
+    part_dir = out_dir / PARTIAL_DIR
+    part_dir.mkdir(parents=True, exist_ok=True)
+    seq = len(list(part_dir.glob("part-*.npz"))) + 1
+    target = part_dir / f"part-{seq:06d}.npz"
+    tmp = part_dir / f"part-{seq:06d}.npz.tmp"
+    with tmp.open("wb") as handle:
+        np.savez(
+            handle,
+            ids=np.array(ids, dtype=str),
+            hashes=np.array(hashes, dtype=str),
+            vectors=np.array(vectors, dtype=np.float32),
+            model=np.array(model),
+            dim=np.array(dim),
+        )
+    tmp.replace(target)
+
+
+def _cleanup_partial(out_dir: Path) -> None:
+    """清理分片进度目录。"""
+    part_dir = out_dir / PARTIAL_DIR
+    if not part_dir.is_dir():
+        return
+    for path in part_dir.glob("*"):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    try:
+        part_dir.rmdir()
+    except OSError:
+        pass
+
+
 REQUEST_BATCH = 16
 REQUEST_TIMEOUT = 120
 MAX_RETRIES = 5
@@ -181,6 +255,12 @@ def _is_rate_limit(exc: Exception) -> bool:
     )
 
 
+def _is_quota_error(exc: Exception) -> bool:
+    """判断异常是否为余额不足。"""
+    text = str(exc).lower()
+    return "insufficient" in text and ("quota" in text or "balance" in text)
+
+
 async def _embed_request(
     provider: Any,
     batch: list[str],
@@ -203,6 +283,11 @@ async def _embed_request(
                 f"（{REQUEST_TIMEOUT} 秒）"
             ) from exc
         except Exception as exc:  # noqa: BLE001 - 统一包装成模块异常
+            if _is_quota_error(exc):
+                raise SemanticError(
+                    "嵌入模型账户余额不足（403 insufficient quota），"
+                    "充值后可从检查点继续"
+                ) from exc
             if not _is_rate_limit(exc):
                 raise SemanticError(
                     f"编码第 {start + 1}–{start + len(batch)} 篇失败：{exc}"
@@ -228,12 +313,14 @@ async def _embed_batches(
     dim: int,
     rpm: int = 0,
     error_log: LogFn | None = None,
+    checkpoint: Callable[[dict[int, list[float]]], None] | None = None,
 ) -> tuple[dict[int, list[float]], int]:
     """把待编码文本按 16 篇一个请求编码，支持 RPM 限速与 429 退避。"""
     vectors: dict[int, list[float]] = {}
     total = len(texts)
     limiter = _RateLimiter(rpm)
     report = error_log or log
+    last_checkpoint = 0
     for start in range(0, total, REQUEST_BATCH):
         batch = texts[start : start + REQUEST_BATCH]
         part = await _embed_request(provider, batch, limiter, report, start)
@@ -247,6 +334,14 @@ async def _embed_batches(
             vectors[start + offset] = vector
         done = min(start + REQUEST_BATCH, total)
         if done % 256 == 0 or done == total:
+            if checkpoint is not None:
+                checkpoint(
+                    {
+                        index: vectors[index]
+                        for index in range(last_checkpoint, done)
+                    }
+                )
+            last_checkpoint = done
             log(f"已编码 {done}/{total}")
     return vectors, dim
 
@@ -295,34 +390,72 @@ async def build(
     old_meta = read_meta(out_dir) or {}
     old_model = str(old_meta.get("model") or "")
     current_model = provider_label(provider)
-    same_model = bool(old_model) and old_model == current_model
     dim = _dim_of(provider)
-    if (
+
+    known: dict[str, list[float]] = {}
+    known_hashes: dict[str, str] = {}
+    reuse_base = (
         incremental
         and old_matrix is not None
-        and same_model
+        and bool(old_model)
+        and old_model == current_model
         and (dim <= 0 or dim == old_dim)
-    ):
-        log(f"增量构建：复用 {len(old_ids)} 条旧向量")
-        reuse = True
+    )
+    if reuse_base:
         dim = old_dim if dim <= 0 else dim
-    else:
-        if incremental and old_matrix is not None:
-            if not same_model:
-                log(f"模型由「{old_model or '未知'}」变为「{current_model}」，改为全量构建")
-            else:
-                log(f"向量维度从 {old_dim} 变为 {dim}，改为全量构建")
-        reuse = False
-        dim = _dim_of(provider)
+        for position, doc_id in enumerate(old_ids):
+            if position < len(old_matrix):
+                known[doc_id] = old_matrix[position]
+        known_hashes.update(old_hashes)
+        log(f"增量构建：复用 {len(known)} 条旧向量")
+    elif incremental and old_matrix is not None:
+        if not old_model:
+            log("旧向量缺少模型信息，改为全量构建")
+        elif old_model != current_model:
+            log(f"模型由「{old_model}」变为「{current_model}」，改为全量构建")
+        else:
+            log(f"向量维度从 {old_dim} 变为 {dim}，改为全量构建")
+
+    if incremental:
+        partial_vectors, partial_hashes, partial_dim = _load_partial(
+            out_dir, current_model, dim
+        )
+        if partial_vectors:
+            if dim <= 0 and partial_dim > 0:
+                dim = partial_dim
+            known.update(partial_vectors)
+            known_hashes.update(partial_hashes)
+            log(f"发现 {len(partial_vectors)} 条未完成进度，继续构建")
 
     need = [
         index
         for index, (doc_id, digest) in enumerate(zip(ids, hashes))
-        if not reuse or old_hashes.get(doc_id) != digest
+        if known_hashes.get(doc_id) != digest
     ]
 
     new_vectors: dict[int, list[float]] = {}
     if need:
+
+        def checkpoint(chunk: dict[int, list[float]]) -> None:
+            nonlocal dim
+            positions = sorted(chunk)
+            if not positions:
+                return
+            part_vectors = [chunk[position] for position in positions]
+            if dim <= 0:
+                dim = len(part_vectors[0])
+            try:
+                _save_partial(
+                    out_dir,
+                    current_model,
+                    dim,
+                    [ids[need[position]] for position in positions],
+                    [hashes[need[position]] for position in positions],
+                    part_vectors,
+                )
+            except OSError as exc:
+                (error_log or log)(f"检查点写入失败：{exc}")
+
         new_vectors, dim = await _embed_batches(
             provider,
             [texts[index] for index in need],
@@ -330,9 +463,10 @@ async def build(
             dim,
             rpm=rpm,
             error_log=error_log,
+            checkpoint=checkpoint,
         )
         new_vectors = {need[offset]: vec for offset, vec in new_vectors.items()}
-    elif not reuse:
+    elif not known:
         raise SemanticError("没有可编码的文档")
 
     n = len(ids)
@@ -340,12 +474,13 @@ async def build(
         raise SemanticError("无法确定向量维度")
 
     matrix = np.zeros((n, dim), dtype=np.float32)
-    old_pos = {doc_id: index for index, doc_id in enumerate(old_ids)} if reuse else {}
-    for index in range(n):
-        if index in new_vectors:
-            matrix[index] = new_vectors[index]
-        else:
-            matrix[index] = old_matrix[old_pos[ids[index]]]
+    for index, doc_id in enumerate(ids):
+        vector = new_vectors.get(index)
+        if vector is None and known_hashes.get(doc_id) == hashes[index]:
+            vector = known.get(doc_id)
+        if vector is None:
+            raise SemanticError(f"缺少文档 {doc_id} 的向量")
+        matrix[index] = vector
 
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     matrix = matrix / np.clip(norms, 1e-8, None)
@@ -379,6 +514,7 @@ async def build(
         vector_tmp.replace(out_dir / VECTOR_NAME)
         docs_tmp.replace(out_dir / DOCS_NAME)
         meta_tmp.replace(out_dir / META_NAME)
+        _cleanup_partial(out_dir)
     except BaseException:
         _cleanup_tmp(out_dir)
         raise
