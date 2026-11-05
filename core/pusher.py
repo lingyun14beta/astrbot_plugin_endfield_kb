@@ -30,10 +30,10 @@ class Pusher:
         return self.plugin.config
 
     def state_path(self) -> Path:
-        """通知状态的落盘位置，放在索引目录内；旧位置会自动迁移。"""
+        """通知状态放在插件数据目录，不受索引重载/替换影响。"""
         index_dir = self.plugin.index_dir
-        target = index_dir / notify.STATE_NAME
-        legacy = index_dir.parent / notify.STATE_NAME
+        target = index_dir.parent / notify.STATE_NAME
+        legacy = index_dir / notify.STATE_NAME
         if not target.exists() and legacy.is_file():
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +113,14 @@ class Pusher:
         lines.append(
             f"已记录：正式 {state.get('main') or '-'} / 预下载 {state.get('pre') or '-'}"
         )
+        lines.append(
+            "已推送：正式 "
+            f"{state.get('notified_main') or state.get('main') or '-'} / 预下载 "
+            f"{state.get('notified_pre') or state.get('pre') or '-'}"
+        )
         lines.append(f"最近检查：{state.get('checked_at') or '-'}")
+        if state.get("notified_at"):
+            lines.append(f"最近推送：{state.get('notified_at')}")
         retry = int(state.get("retry") or 0)
         if retry:
             lines.append(f"连续失败：{retry}/{MAX_PUSH_RETRY}")
@@ -157,37 +164,77 @@ class Pusher:
         path = self.state_path()
         state = notify.load_state(path)
         stored = str(state.get("main") or "")
-        status = await asyncio.to_thread(notify.fetch_status, stored)
+        notified_main = str(state.get("notified_main") or stored)
+        stored_pre = str(state.get("pre") or "")
+        notified_pre = str(state.get("notified_pre") or stored_pre)
+        notified_at = str(state.get("notified_at") or "")
+        baseline = notified_main or stored
+        status = await asyncio.to_thread(notify.fetch_status, baseline)
         main = status["main"]
         pre = status["pre"]
         stamp = time.strftime("%Y-%m-%d %H:%M")
 
         if not stored:
-            notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
+            notify.save_state(
+                path,
+                {
+                    "main": main,
+                    "pre": pre,
+                    "notified_main": main,
+                    "notified_pre": pre,
+                    "checked_at": stamp,
+                },
+            )
             logger.info(f"[终末地KB] 首次记录版本 {main}，静默写入不发通知")
             return
 
         messages: list[str] = []
-        if notify.is_newer(main, stored):
+        if notify.is_newer(main, notified_main):
             messages.append(
                 notify.render(
-                    "main", main, stored, status["total"], status["incremental"]
+                    "main",
+                    main,
+                    notified_main,
+                    status["total"],
+                    status["incremental"],
                 )
             )
         if self.conf().get("pre_download", True):
-            old_pre = str(state.get("pre") or "")
-            if pre and pre != old_pre:
+            if pre and pre != notified_pre:
                 messages.append(
                     notify.render(
-                        "pre", pre, old_pre, status["total"], status["pre_incremental"]
+                        "pre",
+                        pre,
+                        notified_pre,
+                        status["total"],
+                        status["pre_incremental"],
                     )
                 )
-            elif not pre and old_pre:
-                messages.append(notify.render("pre-remove", "", old_pre, 0, 0))
+            elif not pre and notified_pre:
+                messages.append(
+                    notify.render("pre-remove", "", notified_pre, 0, 0)
+                )
 
         umos = self.umos()
+        if messages:
+            logger.info(
+                "[终末地KB] 检测到版本变化："
+                f"已推送 正式 {notified_main or '-'} / 预下载 {notified_pre or '-'}；"
+                f"当前 正式 {main} / 预下载 {pre or '-'}"
+            )
+            logger.info(
+                f"[终末地KB] 准备推送：{len(messages)} 条消息，"
+                f"{len(umos)} 个订阅会话"
+            )
+            for text in messages:
+                logger.info(
+                    f"[终末地KB] 待发送：{text.splitlines()[0] if text else ''}"
+                )
+            if not umos:
+                logger.warning("[终末地KB] 有版本变化但没有订阅会话，暂不推送")
+
+        sent = 0
         if messages and umos:
-            sent = 0
             for umo in umos:
                 for text in messages:
                     try:
@@ -198,6 +245,9 @@ class Pusher:
                     except Exception as exc:  # noqa: BLE001 - 单个会话失败不影响其他
                         logger.warning(f"[终末地KB] 推送到 {umo} 失败：{exc}")
             if sent:
+                notified_main = main
+                notified_pre = pre
+                notified_at = stamp
                 logger.info(f"[终末地KB] 版本通知已发送 {sent} 条")
             else:
                 attempts = int(state.get("retry") or 0) + 1
@@ -205,20 +255,34 @@ class Pusher:
                     notify.save_state(
                         path,
                         {
-                            "main": stored,
-                            "pre": str(state.get("pre") or ""),
+                            "main": main,
+                            "pre": pre,
+                            "notified_main": notified_main,
+                            "notified_pre": notified_pre,
                             "checked_at": stamp,
+                            "notified_at": notified_at,
                             "retry": str(attempts),
                         },
                     )
                     logger.warning(
                         f"[终末地KB] 版本通知全部失败（第 {attempts}/{MAX_PUSH_RETRY} 次），"
-                        "保留旧状态下轮重试"
+                        "保留上次已推送版本，下轮重试"
                     )
                     return
                 logger.error(
                     f"[终末地KB] 版本通知连续 {MAX_PUSH_RETRY} 次失败，放弃本轮，"
                     f"版本记为 {main}"
                 )
+                notified_main = main
+                notified_pre = pre
 
-        notify.save_state(path, {"main": main, "pre": pre, "checked_at": stamp})
+        payload = {
+            "main": main,
+            "pre": pre,
+            "notified_main": notified_main,
+            "notified_pre": notified_pre,
+            "checked_at": stamp,
+        }
+        if notified_at:
+            payload["notified_at"] = notified_at
+        notify.save_state(path, payload)
