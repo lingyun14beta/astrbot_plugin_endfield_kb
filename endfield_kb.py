@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import jieba
 
@@ -461,6 +462,58 @@ def kind_counts(db_path: Path) -> dict[str, int]:
         return {}
     finally:
         con.close()
+
+
+def browse_docs(
+    db_path: Path,
+    kinds: tuple[str, ...] | None = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[Hit], int]:
+    """按分类分页浏览索引，不经过检索排序。
+
+    Args:
+        db_path: 索引 sqlite 路径。
+        kinds: 限定资料类型；None 表示全部。
+        page: 从 1 开始的页码。
+        page_size: 每页条数，限制在 1-50。
+
+    Returns:
+        (当前页结果, 总条数)。
+    """
+    if not db_path.is_file():
+        return [], 0
+    page = max(1, int(page))
+    page_size = max(1, min(int(page_size), 50))
+    where = ""
+    params: list[Any] = []
+    if kinds:
+        placeholders = ",".join("?" for _ in kinds)
+        where = f" WHERE kind IN ({placeholders})"
+        params.extend(kinds)
+    con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        total = con.execute(f"SELECT count(*) FROM docs{where}", params).fetchone()[0]
+        rows = con.execute(
+            "SELECT doc_id, title, coll, kind, body, refs "
+            f"FROM docs{where} ORDER BY id LIMIT ? OFFSET ?",
+            [*params, page_size, (page - 1) * page_size],
+        ).fetchall()
+    finally:
+        con.close()
+    hits = [
+        Hit(
+            doc_id=str(row[0]),
+            title=str(row[1]),
+            coll=str(row[2]),
+            kind=str(row[3]),
+            body=str(row[4]),
+            score=0.0,
+            refs=str(row[5]),
+        )
+        for row in rows
+    ]
+    return hits, int(total)
 
 
 def search(

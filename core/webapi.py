@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 
 from .. import index_fetch, semantic
-from ..endfield_kb import KIND_LABELS, kind_counts
+from ..endfield_kb import KIND_LABELS, browse_docs, kind_counts
 
 # 控制台「范围」筛选：界面选项 → 索引里的 kind
 SCOPE_KINDS: dict[str, tuple[str, ...]] = {
@@ -97,6 +97,58 @@ async def search(plugin: Any):
                     "chars": len(hit.body),
                     "body": hit.body[:1600],
                     "refs": hit.ref_list[:60],
+                }
+                for hit in hits
+            ],
+        }
+    )
+
+
+async def browse(plugin: Any):
+    """控制台浏览接口：按分类分页读取索引内容。"""
+    if not plugin.db_path:
+        return error_response("索引尚未构建", status_code=503)
+    scope = (request.query.get("scope") or "").strip()
+    kinds = SCOPE_KINDS.get(scope)
+    page = max(1, int(request.query.get("page", 1, type=int) or 1))
+    page_size = max(
+        1, min(int(request.query.get("page_size", 10, type=int) or 10), 50)
+    )
+    hits, total = browse_docs(plugin.db_path, kinds, page, page_size)
+    counts = kind_counts(plugin.db_path)
+    categories = [{"key": "", "label": "全部", "count": sum(counts.values())}]
+    for key, label in (
+        ("story", "剧情原文"),
+        ("archive", "中枢档案"),
+        ("wiki", "整理资料"),
+        ("character", "角色资料"),
+    ):
+        categories.append(
+            {
+                "key": key,
+                "label": label,
+                "count": sum(counts.get(kind, 0) for kind in SCOPE_KINDS[key]),
+            }
+        )
+    return json_response(
+        {
+            "scope": scope if scope in SCOPE_KINDS else "",
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": max(1, (total + page_size - 1) // page_size),
+            "categories": categories,
+            "items": [
+                {
+                    "doc_id": hit.doc_id,
+                    "title": hit.title,
+                    "collection": hit.coll,
+                    "kind": hit.kind,
+                    "kind_label": hit.kind_label,
+                    "chars": len(hit.body),
+                    "body": hit.body,
+                    "refs": hit.ref_list[:60],
+                    "browse": True,
                 }
                 for hit in hits
             ],

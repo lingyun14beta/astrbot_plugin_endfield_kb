@@ -161,12 +161,16 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 
 范围只收窄候选集合，不改变排序；命中条数还会被相对分数阈值再砍一次，所以实际返回常少于所选条数。
 
+顶部有 **检索 / 浏览** 切换。浏览模式不用输入关键词，直接按「全部 / 剧情原文 / 中枢档案 / 整理资料 / 角色资料」分类列出索引里已有的条目，点一条看完整正文；分类按钮上带当前分类的篇数。底部分页可以直接在输入框里填页码跳转。
+
+![控制台](docs/kb-console-desktop.png)
+
+![浏览模式](docs/kb-console-browse.png)
+
 控制台里还有两个按钮：
 
 - **检查更新**：对比本地与远端版本；发现新版本时按钮变成「更新到 x.y.z」，再点一次即下载安装
 - **导入索引**：选择本地 `.zip` / `.gz` / `.sqlite3`，上传后校验并立即生效；导入期间进度条先扫描、完成后从左填满，随即关闭
-
-![控制台](docs/kb-console-desktop.png)
 
 ## 配置
 
@@ -281,6 +285,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 |---|---|---|
 | `/astrbot_plugin_endfield_kb/stats` | GET | 篇数、字数、体积、构建时间、语料版本、分类计数 |
 | `/astrbot_plugin_endfield_kb/search` | GET | `q` 查询词、`k` 条数（≤50）、`scope` 范围、`rewrite=1` 启用改写 |
+| `/astrbot_plugin_endfield_kb/browse` | GET | `scope` 分类、`page` 页码、`page_size` 每页条数 |
 | `/astrbot_plugin_endfield_kb/updates` | GET | 对比本地与远端版本 |
 | `/astrbot_plugin_endfield_kb/update` | POST | 下载并安装最新索引 |
 | `/astrbot_plugin_endfield_kb/upload` | POST | 接收手动上传的索引文件 |

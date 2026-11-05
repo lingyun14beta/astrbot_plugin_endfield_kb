@@ -120,6 +120,12 @@ class EndfieldKBPlugin(Star):
             "终末地知识库检索",
         )
         context.register_web_api(
+            f"/{PLUGIN_NAME}/browse",
+            self.page_browse,
+            ["GET"],
+            "终末地知识库浏览",
+        )
+        context.register_web_api(
             f"/{PLUGIN_NAME}/updates",
             self.page_updates,
             ["GET"],
@@ -283,6 +289,9 @@ class EndfieldKBPlugin(Star):
 
     async def page_search(self):
         return await webapi.search(self)
+
+    async def page_browse(self):
+        return await webapi.browse(self)
 
     async def page_updates(self):
         return await webapi.updates(self)

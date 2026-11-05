@@ -105,6 +105,85 @@ body {
   color: var(--ark-muted);
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.ark-query-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ark-mode {
+  display: inline-flex;
+  border: 1px solid var(--ark-rule-strong);
+}
+
+.ark-mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ark-muted);
+  font: 500 10px/1 var(--ark-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.48rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 160ms var(--ark-ease), color 160ms var(--ark-ease);
+}
+
+.ark-mode-btn + .ark-mode-btn {
+  border-inline-start: 1px solid var(--ark-rule-strong);
+}
+
+.ark-mode-btn:hover {
+  color: var(--ark-ink);
+}
+
+.ark-mode-btn.is-active {
+  background: var(--ark-ink);
+  color: var(--ark-paper);
+}
+
+.ark-browse {
+  margin-block-start: 0.7rem;
+}
+
+.ark-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.55rem;
+}
+
+.ark-category {
+  appearance: none;
+  border: 1px solid var(--ark-rule-strong);
+  background: transparent;
+  color: var(--ark-ink);
+  font: 500 12px/1 var(--ark-font-cjk);
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  transition: background-color 160ms var(--ark-ease), border-color 160ms var(--ark-ease);
+}
+
+.ark-category:hover {
+  border-color: var(--ark-ink);
+}
+
+.ark-category.is-active {
+  background: var(--ark-signal);
+  border-color: var(--ark-signal);
+}
+
+.ark-category:focus-visible,
+.ark-mode-btn:focus-visible {
+  outline: 2px solid var(--ark-signal);
+  outline-offset: 2px;
+}
+
 .ark-title {
   margin: 0.35rem 0 0;
   font-family: var(--ark-font-cjk);
@@ -516,6 +595,36 @@ body {
   letter-spacing: 0.12em;
   font-variant-numeric: tabular-nums;
   color: var(--ark-muted);
+}
+
+.ark-pager-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--ark-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ark-muted);
+}
+
+.ark-pager-input {
+  inline-size: 5.5em;
+  border: 1px solid var(--ark-rule-strong);
+  background: var(--ark-paper);
+  color: var(--ark-ink);
+  font: 400 12px/1 var(--ark-font-mono);
+  text-align: center;
+  padding: 0.4rem 0.35rem;
+  appearance: textfield;
+}
+
+.ark-pager-input:focus-visible {
+  outline: 2px solid var(--ark-signal);
+  outline-offset: 2px;
+}
+
+.ark-pager-total {
+  letter-spacing: 0.08em;
 }
 
 .ark-item {

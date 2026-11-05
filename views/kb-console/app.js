@@ -16,6 +16,12 @@ const els = {
   list: document.getElementById("list"),
   placeholder: document.getElementById("placeholder"),
   readout: document.getElementById("readout"),
+  queryLabel: document.getElementById("query-label"),
+  queryMeta: document.getElementById("query-meta"),
+  hint: document.getElementById("query-hint"),
+  browseBar: document.getElementById("browse-bar"),
+  categories: document.getElementById("categories"),
+  modeButtons: [...document.querySelectorAll(".ark-mode-btn")],
   detailBody: document.getElementById("detail-body"),
   detailMeta: document.getElementById("detail-meta"),
   detail: document.getElementById("detail"),
@@ -45,7 +51,8 @@ const els = {
   pager: document.getElementById("pager"),
   pagerPrev: document.getElementById("pager-prev"),
   pagerNext: document.getElementById("pager-next"),
-  pagerStatus: document.getElementById("pager-status"),
+  pagerInput: document.getElementById("pager-input"),
+  pagerTotal: document.getElementById("pager-total"),
 };
 
 const PAGE_SIZE = 10;
@@ -57,6 +64,11 @@ const state = {
   page: 0,
   pendingUpdate: null,
   hasIndex: false,
+  mode: "search",
+  browseScope: "",
+  browsePage: 1,
+  browseTotal: 0,
+  browsePages: 1,
 };
 
 function t(key, fallback) {
@@ -179,13 +191,7 @@ function renderError(message) {
   els.list.appendChild(box);
 }
 
-function renderHits(payload) {
-  clearList();
-  els.placeholder.hidden = true;
-  pulseResults();
-  state.hits = payload.hits ?? [];
-  state.active = -1;
-  state.page = 0;
+function resetDetail() {
   els.detailMeta.textContent = t("views.kb-console.noSelection", "未选择");
   els.detailBody.replaceChildren();
   const empty = document.createElement("p");
@@ -195,6 +201,16 @@ function renderHits(payload) {
     "从左侧选择一条结果，这里显示完整正文与来源信息。",
   );
   els.detailBody.appendChild(empty);
+}
+
+function renderHits(payload) {
+  clearList();
+  els.placeholder.hidden = true;
+  pulseResults();
+  state.hits = payload.hits ?? [];
+  state.active = -1;
+  state.page = 0;
+  resetDetail();
 
   if (!state.hits.length) {
     updatePager();
@@ -213,7 +229,9 @@ function renderHits(payload) {
 
 function renderPage() {
   clearList();
-  const start = state.page * PAGE_SIZE;
+  const browse = state.mode === "browse";
+  const start = browse ? 0 : state.page * PAGE_SIZE;
+  const numberBase = browse ? (state.browsePage - 1) * PAGE_SIZE : start;
   state.hits.slice(start, start + PAGE_SIZE).forEach((hit, offset) => {
     const index = start + offset;
     const item = document.createElement("li");
@@ -228,7 +246,7 @@ function renderPage() {
 
     const number = document.createElement("span");
     number.className = "ark-item-index";
-    number.textContent = String(index + 1).padStart(2, "0");
+    number.textContent = String(numberBase + offset + 1).padStart(2, "0");
 
     const body = document.createElement("span");
     body.className = "ark-item-content";
@@ -265,20 +283,63 @@ function renderPage() {
 }
 
 function updatePager() {
-  const total = Math.max(1, Math.ceil(state.hits.length / PAGE_SIZE));
-  const paged = state.hits.length > PAGE_SIZE;
+  const browse = state.mode === "browse";
+  const total = browse
+    ? Math.max(1, state.browsePages)
+    : Math.max(1, Math.ceil(state.hits.length / PAGE_SIZE));
+  const current = browse ? state.browsePage - 1 : state.page;
+  const paged = total > 1;
   els.pager.hidden = !paged;
   if (!paged) return;
-  els.pagerStatus.textContent = `${state.page + 1} / ${total}`;
-  els.pagerPrev.disabled = state.page === 0;
-  els.pagerNext.disabled = state.page >= total - 1;
+  els.pagerInput.value = String(current + 1);
+  els.pagerInput.max = String(total);
+  els.pagerTotal.textContent = `/ ${total}`;
+  els.pagerPrev.disabled = current === 0;
+  els.pagerNext.disabled = current >= total - 1;
 }
 
 function goToPage(delta) {
+  if (state.mode === "browse") {
+    const target = Math.min(
+      Math.max(state.browsePage + delta, 1),
+      state.browsePages,
+    );
+    if (target === state.browsePage) return;
+    loadBrowse(state.browseScope, target);
+    return;
+  }
   const total = Math.ceil(state.hits.length / PAGE_SIZE);
   if (total < 2) return;
   const target = Math.min(Math.max(state.page + delta, 0), total - 1);
   if (target === state.page) return;
+  state.page = target;
+  renderPage();
+  selectHit(target * PAGE_SIZE);
+  els.list.firstElementChild?.scrollIntoView({
+    behavior: prefersReduced ? "auto" : "smooth",
+    block: "nearest",
+  });
+}
+
+function jumpToPage(value) {
+  const browse = state.mode === "browse";
+  const total = browse
+    ? state.browsePages
+    : Math.ceil(state.hits.length / PAGE_SIZE);
+  const page = Math.min(
+    Math.max(Number.parseInt(value, 10) || 1, 1),
+    Math.max(1, total),
+  );
+  if (browse) {
+    if (page !== state.browsePage) loadBrowse(state.browseScope, page);
+    else els.pagerInput.value = String(page);
+    return;
+  }
+  const target = page - 1;
+  if (target === state.page) {
+    els.pagerInput.value = String(page);
+    return;
+  }
   state.page = target;
   renderPage();
   selectHit(target * PAGE_SIZE);
@@ -316,7 +377,7 @@ function selectHit(index, scrollDetail = false) {
   const bits = [
     hit.kind_label,
     hit.collection || "未归类",
-    hit.semantic ? "语义召回" : `BM25 ${hit.score}`,
+    hit.browse ? "浏览" : hit.semantic ? "语义召回" : `BM25 ${hit.score}`,
     `${hit.chars} 字`,
   ];
   bits.forEach((text) => {
@@ -394,6 +455,88 @@ async function runSearch(rawQuery) {
   } finally {
     setBusy(false);
   }
+}
+
+function renderCategories(categories) {
+  els.categories.replaceChildren();
+  categories.forEach((category) => {
+    const key = category.key || "";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ark-category";
+    button.textContent = `${category.label} ${formatCount(category.count)}`;
+    button.classList.toggle("is-active", key === state.browseScope);
+    button.setAttribute("aria-pressed", String(key === state.browseScope));
+    button.addEventListener("click", () => {
+      if (state.busy || key === state.browseScope) return;
+      state.browseScope = key;
+      loadBrowse(key, 1);
+    });
+    els.categories.appendChild(button);
+  });
+}
+
+async function loadBrowse(scope = state.browseScope, page = 1) {
+  if (state.busy) return;
+  state.mode = "browse";
+  state.busy = true;
+  setBusy(true);
+  els.readout.textContent = "读取索引…";
+  renderSkeleton();
+  try {
+    const payload = await bridge.apiGet("browse", {
+      scope,
+      page,
+      page_size: PAGE_SIZE,
+    });
+    state.browseScope = payload.scope || "";
+    state.browsePage = payload.page || 1;
+    state.browsePages = payload.pages || 1;
+    state.browseTotal = payload.total || 0;
+    renderCategories(payload.categories || []);
+    els.readout.textContent =
+      `共 ${formatCount(state.browseTotal)} 条 · ` +
+      `第 ${state.browsePage}/${state.browsePages} 页`;
+    renderHits({ hits: payload.items || [] });
+    if (payload.items?.length) selectHit(0);
+  } catch (error) {
+    els.readout.textContent = "浏览失败";
+    renderError(error?.message || "请求失败，请检查插件是否已加载。");
+  } finally {
+    state.busy = false;
+    setBusy(false);
+  }
+}
+
+function setMode(mode) {
+  if (mode === state.mode) return;
+  state.mode = mode;
+  const browse = mode === "browse";
+  els.queryLabel.textContent = browse ? "BROWSE / 浏览" : "QUERY INPUT / 检索";
+  els.form.hidden = browse;
+  els.queryMeta.hidden = browse;
+  els.hint.hidden = browse;
+  els.examples.hidden = browse;
+  els.browseBar.hidden = !browse;
+  els.modeButtons.forEach((button) => {
+    const active = button.dataset.mode === mode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  if (browse) {
+    els.input.blur();
+    loadBrowse(state.browseScope, 1);
+    return;
+  }
+  state.hits = [];
+  state.active = -1;
+  state.page = 0;
+  clearList();
+  els.placeholder.hidden = false;
+  els.readout.textContent = "等待检索";
+  resetDetail();
+  updatePager();
+  els.input.focus();
 }
 
 async function loadStats() {
@@ -686,6 +829,10 @@ function boot() {
     runSearch();
   });
 
+  els.modeButtons.forEach((button) => {
+    button.addEventListener("click", () => setMode(button.dataset.mode));
+  });
+
   els.examples.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-q]");
     if (!button) return;
@@ -704,6 +851,15 @@ function boot() {
   });
   els.pagerPrev?.addEventListener("click", () => goToPage(-1));
   els.pagerNext?.addEventListener("click", () => goToPage(1));
+  els.pagerInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    jumpToPage(event.target.value);
+    event.target.blur();
+  });
+  els.pagerInput?.addEventListener("change", (event) => {
+    jumpToPage(event.target.value);
+  });
 
   els.checkUpdate?.addEventListener("click", () => {
     if (!state.hasIndex) handleFirstDownload();
@@ -733,7 +889,11 @@ function boot() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "/" && document.activeElement !== els.input) {
+    if (
+      event.key === "/" &&
+      state.mode === "search" &&
+      document.activeElement !== els.input
+    ) {
       event.preventDefault();
       els.input.focus();
     }

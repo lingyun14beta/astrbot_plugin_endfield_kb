@@ -35,7 +35,13 @@
       </header>
 
       <section class="ark-query" aria-labelledby="query-label">
-        <p class="ark-kicker" id="query-label">QUERY INPUT / 检索</p>
+        <div class="ark-query-head">
+          <p class="ark-kicker" id="query-label">QUERY INPUT / 检索</p>
+          <div class="ark-mode" role="tablist" aria-label="检索或浏览">
+            <button type="button" class="ark-mode-btn is-active" data-mode="search" role="tab" aria-selected="true">检索</button>
+            <button type="button" class="ark-mode-btn" data-mode="browse" role="tab" aria-selected="false">浏览</button>
+          </div>
+        </div>
         <form class="ark-form" id="search-form" role="search">
           <label class="ark-input-wrap" for="q">
             <span class="ark-input-index" aria-hidden="true">01</span>
@@ -54,7 +60,7 @@
             检索
           </button>
         </form>
-        <div class="ark-query-meta">
+        <div class="ark-query-meta" id="query-meta">
           <div class="ark-filters" role="group" aria-label="检索范围与条数">
             <label class="ark-field">
               <span class="ark-field-label">范围</span>
@@ -98,6 +104,10 @@
           <li><button type="button" data-q="协议源石是什么">协议源石是什么</button></li>
           <li><button type="button" data-q="哪儿有自己和自己道歉的">台词片段</button></li>
         </ul>
+        <div class="ark-browse" id="browse-bar" hidden>
+          <p class="ark-hint">按分类查看索引里已有的条目，点一条看完整正文。</p>
+          <div class="ark-categories" id="categories" role="group" aria-label="资料分类"></div>
+        </div>
         <div class="ark-toolbar">
           <button type="button" class="ark-tool" id="check-update">检查更新</button>
           <button type="button" class="ark-tool" id="import-index">导入索引</button>
@@ -123,7 +133,18 @@
           </div>
           <nav class="ark-pager" id="pager" aria-label="结果分页" hidden>
             <button type="button" class="ark-pager-btn" id="pager-prev">上一页</button>
-            <p class="ark-pager-status" id="pager-status" aria-live="polite">1 / 1</p>
+            <label class="ark-pager-jump">
+              <input
+                id="pager-input"
+                class="ark-pager-input"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                aria-label="跳转页码"
+              />
+              <span class="ark-pager-total" id="pager-total">/ 1</span>
+            </label>
             <button type="button" class="ark-pager-btn" id="pager-next">下一页</button>
           </nav>
         </section>
