@@ -561,9 +561,13 @@ class SemanticIndex:
         if docs_path.is_file():
             docs = json.loads(docs_path.read_text(encoding="utf-8"))
             self.ids = [str(item.get("id")) for item in docs]
+            self.hashes = {
+                str(item.get("id")): str(item.get("hash") or "") for item in docs
+            }
         elif ids_path.is_file():
             # 兼容上一版只写 id 列表的索引
             self.ids = json.loads(ids_path.read_text(encoding="utf-8"))
+            self.hashes = {}
         else:
             raise SemanticError("向量索引缺少文档列表，先执行 /zmd向量")
         self.matrix = np.load(vector_path).astype(np.float32)
@@ -599,6 +603,21 @@ class SemanticIndex:
         index = np.argpartition(-scores, top_k - 1)[:top_k]
         index = index[np.argsort(-scores[index])]
         return [self.ids[int(i)] for i in index]
+
+
+def matches_index(index: SemanticIndex, db_path: Path) -> bool:
+    """按 doc_id 与内容指纹判断旧向量是否仍适用于当前索引。"""
+    try:
+        rows = _read_docs(db_path)
+    except sqlite3.Error:
+        return False
+    if len(rows) != index.size:
+        return False
+    for doc_id, title, body in rows:
+        expected = index.hashes.get(str(doc_id))
+        if not expected or expected != _doc_hash(_doc_text(str(title), str(body))):
+            return False
+    return True
 
 
 async def encode_query(provider: Any, query: str) -> list[float]:

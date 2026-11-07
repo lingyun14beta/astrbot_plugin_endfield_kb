@@ -184,6 +184,47 @@ body {
   outline-offset: 2px;
 }
 
+.ark-subfilters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.4rem;
+  margin-block-start: 0.75rem;
+  padding-block-start: 0.7rem;
+  border-block-start: 1px dashed var(--ark-rule);
+}
+
+.ark-filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ark-filter-label {
+  font-family: var(--ark-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ark-muted);
+}
+
+.ark-filter-input,
+.ark-filter-select {
+  border: 1px solid var(--ark-rule-strong);
+  background: var(--ark-paper);
+  color: var(--ark-ink);
+  font: 500 12px/1 var(--ark-font-cjk);
+  padding: 0.45rem 0.6rem;
+  min-inline-size: 9rem;
+}
+
+.ark-filter-input:focus-visible,
+.ark-filter-select:focus-visible {
+  outline: 2px solid var(--ark-signal);
+  outline-offset: 2px;
+}
+
 .ark-title {
   margin: 0.35rem 0 0;
   font-family: var(--ark-font-cjk);

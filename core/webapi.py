@@ -11,7 +11,12 @@ from urllib.parse import urlparse
 from astrbot.api.web import PluginUploadFile, error_response, json_response, request
 
 from .. import index_fetch, semantic
-from ..endfield_kb import KIND_LABELS, browse_docs, kind_counts
+from ..endfield_kb import (
+    KIND_LABELS,
+    browse_docs,
+    browse_facets,
+    kind_counts,
+)
 
 # 控制台「范围」筛选：界面选项 → 索引里的 kind
 SCOPE_KINDS: dict[str, tuple[str, ...]] = {
@@ -20,11 +25,14 @@ SCOPE_KINDS: dict[str, tuple[str, ...]] = {
     "wiki": (
         "knowledge",
         "story_wiki",
-        "character_wiki",
-        "character_activity_wiki",
         "reference",
     ),
-    "character": ("character_profile", "character_voice"),
+    "character": (
+        "character_wiki",
+        "character_activity_wiki",
+        "character_profile",
+        "character_voice",
+    ),
 }
 
 
@@ -109,12 +117,26 @@ async def browse(plugin: Any):
     if not plugin.db_path:
         return error_response("索引尚未构建", status_code=503)
     scope = (request.query.get("scope") or "").strip()
-    kinds = SCOPE_KINDS.get(scope)
+    kind = (request.query.get("kind") or "").strip()
+    kinds = (kind,) if kind else SCOPE_KINDS.get(scope)
     page = max(1, int(request.query.get("page", 1, type=int) or 1))
     page_size = max(
         1, min(int(request.query.get("page_size", 10, type=int) or 10), 50)
     )
-    hits, total = browse_docs(plugin.db_path, kinds, page, page_size)
+    content_type = (request.query.get("content_type") or "").strip()
+    character = (request.query.get("character") or "").strip()
+    activity = (request.query.get("activity") or "").strip()
+    collection = (request.query.get("collection") or "").strip()
+    hits, total = browse_docs(
+        plugin.db_path,
+        kinds,
+        page,
+        page_size,
+        content_type=content_type,
+        character=character,
+        activity=activity,
+        collection=collection,
+    )
     counts = kind_counts(plugin.db_path)
     categories = [{"key": "", "label": "全部", "count": sum(counts.values())}]
     for key, label in (
@@ -127,17 +149,27 @@ async def browse(plugin: Any):
             {
                 "key": key,
                 "label": label,
-                "count": sum(counts.get(kind, 0) for kind in SCOPE_KINDS[key]),
+                "count": sum(counts.get(item, 0) for item in SCOPE_KINDS[key]),
             }
         )
+    facets = browse_facets(plugin.db_path, kinds)
     return json_response(
         {
             "scope": scope if scope in SCOPE_KINDS else "",
+            "kind": kind,
             "page": page,
             "page_size": page_size,
             "total": total,
             "pages": max(1, (total + page_size - 1) // page_size),
             "categories": categories,
+            "kind_counts": counts,
+            "facets": facets,
+            "filters": {
+                "content_type": content_type,
+                "character": character,
+                "activity": activity,
+                "collection": collection,
+            },
             "items": [
                 {
                     "doc_id": hit.doc_id,

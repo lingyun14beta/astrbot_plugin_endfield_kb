@@ -21,6 +21,7 @@ const els = {
   hint: document.getElementById("query-hint"),
   browseBar: document.getElementById("browse-bar"),
   categories: document.getElementById("categories"),
+  subfilters: document.getElementById("subfilters"),
   modeButtons: [...document.querySelectorAll(".ark-mode-btn")],
   detailBody: document.getElementById("detail-body"),
   detailMeta: document.getElementById("detail-meta"),
@@ -57,6 +58,23 @@ const els = {
 
 const PAGE_SIZE = 10;
 
+const CONTENT_LABELS = {
+  dialogue: "对话",
+  radio: "电台",
+  environment_talk: "环境对话",
+  sns_chat: "SNS",
+  black_screen: "黑屏",
+  cutscene: "过场",
+  remote_comm: "远程通讯",
+  archive: "档案",
+  knowledge: "知识",
+  relationship_catalog: "关系",
+};
+
+function contentLabel(name) {
+  return CONTENT_LABELS[name] || name;
+}
+
 const state = {
   busy: false,
   hits: [],
@@ -66,6 +84,11 @@ const state = {
   hasIndex: false,
   mode: "search",
   browseScope: "",
+  browseKind: "",
+  browseContent: "",
+  browseCharacter: "",
+  browseActivity: "",
+  browseCollection: "",
   browsePage: 1,
   browseTotal: 0,
   browsePages: 1,
@@ -470,10 +493,190 @@ function renderCategories(categories) {
     button.addEventListener("click", () => {
       if (state.busy || key === state.browseScope) return;
       state.browseScope = key;
+      state.browseKind = "";
+      state.browseContent = "";
+      state.browseCharacter = "";
+      state.browseActivity = "";
+      state.browseCollection = "";
       loadBrowse(key, 1);
     });
     els.categories.appendChild(button);
   });
+}
+
+function browseChip(label, active, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ark-category";
+  button.textContent = label;
+  button.classList.toggle("is-active", active);
+  button.setAttribute("aria-pressed", String(active));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function filterGroup(label) {
+  const group = document.createElement("div");
+  group.className = "ark-filter-group";
+  const caption = document.createElement("span");
+  caption.className = "ark-filter-label";
+  caption.textContent = label;
+  group.appendChild(caption);
+  return group;
+}
+
+function applyBrowseFilter(patch) {
+  Object.assign(state, patch);
+  loadBrowse(state.browseScope, 1);
+}
+
+function renderSubfilters(payload) {
+  const facets = payload.facets || {};
+  const caps = facets.capabilities || {};
+  const scope = state.browseScope;
+  const counts = payload.kind_counts || {};
+  els.subfilters.replaceChildren();
+  els.subfilters.hidden = true;
+  if (!scope) return;
+
+  const groups = [];
+  if (scope === "story" && caps.content_type && facets.content_types?.length) {
+    const group = filterGroup("内容形式");
+    const all = browseChip("全部", !state.browseContent, () => {
+      if (state.browseContent) applyBrowseFilter({ browseContent: "" });
+    });
+    group.appendChild(all);
+    facets.content_types.forEach((item) => {
+      group.appendChild(
+        browseChip(
+          `${contentLabel(item.name)} ${formatCount(item.count)}`,
+          state.browseContent === item.name,
+          () => {
+            if (state.browseContent !== item.name) {
+              applyBrowseFilter({ browseContent: item.name });
+            }
+          },
+        ),
+      );
+    });
+    groups.push(group);
+  }
+
+  if (scope === "character") {
+    const subtype = filterGroup("子类");
+    [
+      ["character_wiki", "角色百科"],
+      ["character_activity_wiki", "角色活动资料"],
+      ["character_profile", "角色档案"],
+      ["character_voice", "角色语音"],
+    ].forEach(([key, label]) => {
+      subtype.appendChild(
+        browseChip(
+          `${label} ${formatCount(counts[key] || 0)}`,
+          state.browseKind === key,
+          () => {
+            if (state.browseKind !== key) {
+              applyBrowseFilter({
+                browseKind: key,
+                browseCharacter: "",
+                browseActivity: "",
+              });
+            }
+          },
+        ),
+      );
+    });
+    groups.push(subtype);
+
+    if (state.browseKind && caps.character && facets.characters?.length) {
+      const group = filterGroup("角色");
+      const input = document.createElement("input");
+      input.className = "ark-filter-input";
+      input.type = "search";
+      input.placeholder = "全部角色，输入可搜索";
+      input.setAttribute("list", "character-options");
+      input.value = state.browseCharacter;
+      const options = document.createElement("datalist");
+      options.id = "character-options";
+      facets.characters.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.name;
+        option.label = `${item.name}（${item.count}）`;
+        options.appendChild(option);
+      });
+      const commit = () => {
+        const value = input.value.trim();
+        if (value !== state.browseCharacter) {
+          applyBrowseFilter({ browseCharacter: value });
+        }
+      };
+      input.addEventListener("change", commit);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+        }
+      });
+      group.append(input, options);
+      groups.push(group);
+    }
+
+    if (
+      state.browseKind === "character_activity_wiki" &&
+      caps.activity &&
+      facets.activities?.length
+    ) {
+      const group = filterGroup("活动");
+      const select = document.createElement("select");
+      select.className = "ark-filter-select";
+      const first = document.createElement("option");
+      first.value = "";
+      first.textContent = "全部活动";
+      select.appendChild(first);
+      facets.activities.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.name;
+        option.textContent = `${item.name}（${item.count}）`;
+        option.selected = item.name === state.browseActivity;
+        select.appendChild(option);
+      });
+      select.addEventListener("change", () => {
+        applyBrowseFilter({ browseActivity: select.value });
+      });
+      group.appendChild(select);
+      groups.push(group);
+    }
+  }
+
+  if (
+    (scope === "archive" || scope === "wiki") &&
+    facets.collections?.length
+  ) {
+    const group = filterGroup("集合");
+    group.appendChild(
+      browseChip("全部", !state.browseCollection, () => {
+        if (state.browseCollection) applyBrowseFilter({ browseCollection: "" });
+      }),
+    );
+    facets.collections.forEach((item) => {
+      group.appendChild(
+        browseChip(
+          `${item.name} ${formatCount(item.count)}`,
+          state.browseCollection === item.name,
+          () => {
+            if (state.browseCollection !== item.name) {
+              applyBrowseFilter({ browseCollection: item.name });
+            }
+          },
+        ),
+      );
+    });
+    groups.push(group);
+  }
+
+  if (!groups.length) return;
+  groups.forEach((group) => els.subfilters.appendChild(group));
+  els.subfilters.hidden = false;
 }
 
 async function loadBrowse(scope = state.browseScope, page = 1) {
@@ -486,14 +689,21 @@ async function loadBrowse(scope = state.browseScope, page = 1) {
   try {
     const payload = await bridge.apiGet("browse", {
       scope,
+      kind: state.browseKind,
+      content_type: state.browseContent,
+      character: state.browseCharacter,
+      activity: state.browseActivity,
+      collection: state.browseCollection,
       page,
       page_size: PAGE_SIZE,
     });
     state.browseScope = payload.scope || "";
+    state.browseKind = payload.kind || state.browseKind;
     state.browsePage = payload.page || 1;
     state.browsePages = payload.pages || 1;
     state.browseTotal = payload.total || 0;
     renderCategories(payload.categories || []);
+    renderSubfilters(payload);
     els.readout.textContent =
       `共 ${formatCount(state.browseTotal)} 条 · ` +
       `第 ${state.browsePage}/${state.browsePages} 页`;

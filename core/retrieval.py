@@ -44,6 +44,7 @@ class Retriever:
         self._semantic_warned = False
         self._model_warned = False
         self._version_warned = False
+        self._hash_cache: tuple[str, bool] | None = None
 
     @property
     def config(self) -> dict[str, Any]:
@@ -63,6 +64,7 @@ class Retriever:
     def invalidate(self) -> None:
         """索引或向量变动后丢弃缓存。"""
         self._semantic_cache = None
+        self._hash_cache = None
 
     async def rewrite(self, query: str, umo: str) -> str:
         """用对话模型把描述压成检索关键词。
@@ -168,13 +170,24 @@ class Retriever:
                 and current_index
                 and index.index_version != current_index
             ):
-                if not self._version_warned:
-                    self._version_warned = True
-                    logger.warning(
-                        f"[终末地KB] 向量对应语料 {index.index_version}，"
-                        f"当前是 {current_index}，请重新执行 /zmd向量；本次只用 BM25"
+                checked = self._hash_cache
+                if checked is None or checked[0] != current_index:
+                    checked = (
+                        current_index,
+                        semantic.matches_index(index, self.db_path),
                     )
-                return []
+                    self._hash_cache = checked
+                if not checked[1]:
+                    if not self._version_warned:
+                        self._version_warned = True
+                        logger.warning(
+                            f"[终末地KB] 向量对应语料 {index.index_version}，"
+                            f"当前是 {current_index}，内容已变化，"
+                            "请重新执行 /zmd向量；本次只用 BM25"
+                        )
+                    return []
+                index.index_version = current_index
+                logger.info("[终末地KB] 向量内容与当前索引一致，继续复用")
             vector = await asyncio.wait_for(
                 semantic.encode_query(provider, query), timeout=8
             )
@@ -251,6 +264,7 @@ class Retriever:
                     checkpoint_dtype=dtype,
                 )
                 self._semantic_cache = None
+                self._hash_cache = None
                 text = (
                     f"向量索引完成：{meta['count']} 篇"
                     f"（复用 {meta.get('reused', 0)}，新增 {meta.get('added', 0)}）\n"

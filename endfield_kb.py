@@ -94,10 +94,10 @@ KIND_LABELS = {
     "character_profile": "角色档案",
     "character_voice": "角色语音",
     "knowledge": "整理",
-    "character_wiki": "整理",
-    "story_wiki": "整理",
-    "character_activity_wiki": "整理",
-    "reference": "整理",
+    "character_wiki": "角色百科",
+    "story_wiki": "剧情总结",
+    "character_activity_wiki": "角色活动",
+    "reference": "参考",
 }
 
 # 终末地语料包内的分片目录
@@ -112,7 +112,10 @@ CREATE TABLE docs (
     kind TEXT NOT NULL DEFAULT '',
     body TEXT NOT NULL,
     chars INTEGER NOT NULL DEFAULT 0,
-    refs TEXT NOT NULL DEFAULT ''
+    refs TEXT NOT NULL DEFAULT '',
+    content_type TEXT NOT NULL DEFAULT '',
+    character_name TEXT NOT NULL DEFAULT '',
+    activity_name TEXT NOT NULL DEFAULT ''
 );
 CREATE VIRTUAL TABLE fts USING fts5(
     title,
@@ -367,8 +370,9 @@ def build_index(
             ref_total += len(refs)
             tokens = " ".join(tokenize(doc.get("display_title", "") + " " + body))
             cur = con.execute(
-                "INSERT INTO docs (doc_id, title, coll, kind, body, chars, refs)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO docs (doc_id, title, coll, kind, body, chars, refs,"
+                " content_type, character_name, activity_name)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     doc_id,
                     doc.get("display_title", ""),
@@ -377,6 +381,9 @@ def build_index(
                     body,
                     len(body),
                     "\n".join(refs),
+                    doc.get("content_type", "") or "",
+                    doc.get("character_name", "") or "",
+                    doc.get("activity_name", "") or "",
                 ),
             )
             con.execute(
@@ -464,11 +471,28 @@ def kind_counts(db_path: Path) -> dict[str, int]:
         con.close()
 
 
+def docs_columns(db_path: Path) -> set[str]:
+    """返回 docs 表已有的列，用于兼容旧索引。"""
+    if not db_path.is_file():
+        return set()
+    con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        return {str(row[1]) for row in con.execute("PRAGMA table_info(docs)")}
+    except sqlite3.Error:
+        return set()
+    finally:
+        con.close()
+
+
 def browse_docs(
     db_path: Path,
     kinds: tuple[str, ...] | None = None,
     page: int = 1,
     page_size: int = 10,
+    content_type: str = "",
+    character: str = "",
+    activity: str = "",
+    collection: str = "",
 ) -> tuple[list[Hit], int]:
     """按分类分页浏览索引，不经过检索排序。
 
@@ -477,6 +501,10 @@ def browse_docs(
         kinds: 限定资料类型；None 表示全部。
         page: 从 1 开始的页码。
         page_size: 每页条数，限制在 1-50。
+        content_type: 内容形式，如 dialogue、radio。
+        character: 角色名精确匹配。
+        activity: 活动名精确匹配。
+        collection: 集合名精确匹配。
 
     Returns:
         (当前页结果, 总条数)。
@@ -485,12 +513,23 @@ def browse_docs(
         return [], 0
     page = max(1, int(page))
     page_size = max(1, min(int(page_size), 50))
-    where = ""
+    columns = docs_columns(db_path)
+    clauses: list[str] = []
     params: list[Any] = []
     if kinds:
         placeholders = ",".join("?" for _ in kinds)
-        where = f" WHERE kind IN ({placeholders})"
+        clauses.append(f"kind IN ({placeholders})")
         params.extend(kinds)
+    for column, value in (
+        ("content_type", content_type),
+        ("character_name", character),
+        ("activity_name", activity),
+        ("coll", collection),
+    ):
+        if value and column in columns:
+            clauses.append(f"{column} = ?")
+            params.append(value)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
         total = con.execute(f"SELECT count(*) FROM docs{where}", params).fetchone()[0]
@@ -514,6 +553,58 @@ def browse_docs(
         for row in rows
     ]
     return hits, int(total)
+
+
+def browse_facets(
+    db_path: Path, kinds: tuple[str, ...] | None = None
+) -> dict[str, Any]:
+    """返回当前分类下的角色、活动、内容形式与集合计数。"""
+    if not db_path.is_file():
+        return {}
+    columns = docs_columns(db_path)
+    result: dict[str, Any] = {
+        "capabilities": {
+            "content_type": "content_type" in columns,
+            "character": "character_name" in columns,
+            "activity": "activity_name" in columns,
+        },
+        "content_types": [],
+        "characters": [],
+        "activities": [],
+        "collections": [],
+    }
+    con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        for key, column in (
+            ("content_types", "content_type"),
+            ("characters", "character_name"),
+            ("activities", "activity_name"),
+            ("collections", "coll"),
+        ):
+            if column not in columns:
+                continue
+            clauses = [f"{column} <> ''"]
+            facet_params: list[Any] = []
+            if kinds:
+                placeholders = ",".join("?" for _ in kinds)
+                clauses.append(f"kind IN ({placeholders})")
+                facet_params.extend(kinds)
+            try:
+                rows = con.execute(
+                    f"SELECT {column}, count(*) FROM docs"
+                    f" WHERE {' AND '.join(clauses)}"
+                    f" GROUP BY {column}"
+                    f" ORDER BY count(*) DESC, {column}",
+                    facet_params,
+                ).fetchall()
+            except sqlite3.Error:
+                continue
+            result[key] = [
+                {"name": str(row[0]), "count": int(row[1])} for row in rows
+            ]
+    finally:
+        con.close()
+    return result
 
 
 def search(

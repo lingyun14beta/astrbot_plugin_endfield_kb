@@ -89,7 +89,7 @@ python build_index.py --corpus <目录>     # 指定语料目录
 python build_index.py --out <文件>        # 只构建，用于打包发布
 
 # 写入本仓库自己的索引修订号（推荐），插件据此判断更新
-python build_index.py --index-version 1.6.3-r2
+python build_index.py --index-version 1.6.3-r3
 ```
 
 约 30–60 秒，产出 35 MB 左右的 SQLite 文件。
@@ -99,7 +99,7 @@ python build_index.py --index-version 1.6.3-r2
 ```
 data/plugin_data/astrbot_plugin_endfield_kb/index/
 ├─ current.json                          # 指针：当前文件与版本
-├─ endfield_kb-endfield-1.6.3-r2.sqlite3 # 当前索引
+├─ endfield_kb-endfield-1.6.3-r3.sqlite3 # 当前索引
 └─ endfield_kb-*.sqlite3.zip             # 待导入的压缩包（可选）
 ```
 
@@ -113,6 +113,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 |---|---|
 | `1.6.3-r1` | 语料还是 1.6.3，这是索引的第 1 次编译发布 |
 | `1.6.3-r2` | 同一份语料，改了清洗、分词或结构，重新发布 |
+| `1.6.3-r3` | 同一份语料，索引增加内容形式 / 角色 / 活动元数据，schema 仍为 2 |
 | `1.7.0-r1` | 语料升到 1.7.0 后的第一次编译 |
 
 修订号只表示「我们这边的优化」，不代表游戏或语料出了新版本。索引里写入 `meta.index_version`，控制台显示的、更新比较用的都是它；没有这个字段的旧索引回退到语料 release 名。
@@ -163,9 +164,16 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 
 顶部有 **检索 / 浏览** 切换。浏览模式不用输入关键词，直接按「全部 / 剧情原文 / 中枢档案 / 整理资料 / 角色资料」分类列出索引里已有的条目，点一条看完整正文；分类按钮上带当前分类的篇数。底部分页可以直接在输入框里填页码跳转。
 
+- **剧情原文**：再按内容形式筛选（对话 / 电台 / 环境对话 / SNS / 黑屏 / 过场 / 远程通讯）
+- **角色资料**：先选子类（角色百科 / 角色活动资料 / 角色档案 / 角色语音），再按角色搜索；角色活动资料还能按活动筛选
+- **中枢档案 / 整理资料**：按集合筛选，如纸信记录、地点、NPC
+- 旧索引没有这些列时，二级筛选会自动隐藏，不影响正常浏览
+
 ![控制台](docs/kb-console-desktop.png)
 
 ![浏览模式](docs/kb-console-browse.png)
+
+![角色筛选](docs/kb-console-character.png)
 
 控制台里还有两个按钮：
 
@@ -240,7 +248,7 @@ data/plugin_data/astrbot_plugin_endfield_kb/index/
 - `/zmd向量` 构建向量（管理员），**默认增量**：内容没变的文档直接复用旧向量，只编码新增或有改动的；换模型会自动全量
 - 构建每 256 篇落一次检查点；欠费、429、重启或插件重载中断后，下次从最近检查点继续，成功后自动清理
 - 403 余额不足会直接报错，不会重试烧额度；429 才做指数退避
-- 语义召回遵守控制台的「范围」筛选；向量记录对应语料版本，索引更新后需重新构建
+- 语义召回遵守控制台的「范围」筛选；索引更新时按 `doc_id + 内容 hash` 检查，正文没变会继续复用旧向量，只有内容变化才需要重新构建
 - `/zmd向量状态` 看向量索引、可用模型 id 和维度
 - 向量存在索引目录的 `semantic/` 下：`semantic_vectors.npy`（float16）、`semantic_docs.json`（id + 内容指纹）、`semantic_meta.json`
 - 1024 维模型约 33 MB；维度越高越大
